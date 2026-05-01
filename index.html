@@ -5,25 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interactive H-R Diagram</title>
     <link rel="stylesheet" href="/src/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.css"
+    />
+    <script
+      src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js"
+      charset="utf-8"
+    ></script>
   </head>
   <body>
     <div id="app">
       <header>
         <h1>Interactive H-R Diagram</h1>
         <p class="subtitle">
-          Pick stars, plot them, see where they fall on the
+          Click stars on the sky, watch them appear on the
           Hertzsprung&ndash;Russell diagram.
         </p>
       </header>
 
       <main>
-        <section id="catalog-panel" aria-label="Star catalog">
-          <h2>Sample stars</h2>
-          <p class="hint">
-            Click a star to add it to the diagram. (Sky-viewer integration
-            comes in the next milestone.)
-          </p>
-          <ul id="catalog-list"></ul>
+        <section id="sky-panel" aria-label="Night sky viewer">
+          <div id="sky-controls">
+            <label>
+              Goto
+              <input id="goto-input" type="text" placeholder="e.g. M45, Sirius" />
+            </label>
+            <button id="goto-btn">Go</button>
+            <label>
+              Survey
+              <select id="survey-select">
+                <option value="P/DSS2/color">DSS2 color</option>
+                <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS DR1</option>
+                <option value="P/SDSS9/color">SDSS9 color</option>
+                <option value="P/2MASS/color">2MASS</option>
+              </select>
+            </label>
+            <span class="hint" id="sky-status">Loading sky&hellip;</span>
+          </div>
+          <div id="aladin-lite-div"></div>
         </section>
 
         <section id="diagram-panel" aria-label="H-R diagram">
@@ -34,8 +54,12 @@
         <aside id="info-panel" aria-label="Selected star">
           <h2>Selected</h2>
           <div id="data-panel">
-            <p class="hint">Click a plotted point or a catalog entry.</p>
+            <p class="hint">Click a sample star or a plotted point.</p>
           </div>
+          <details id="catalog-details">
+            <summary>Sample stars (quick add)</summary>
+            <ul id="catalog-list"></ul>
+          </details>
         </aside>
       </main>
     </div>

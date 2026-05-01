@@ -4,6 +4,7 @@ import { plotStar } from "./data/derive";
 import { HRDiagram } from "./ui/hrDiagram";
 import { DataPanel } from "./ui/dataPanel";
 import { Controls } from "./ui/controls";
+import { SkyViewer } from "./ui/skyViewer";
 import {
   deleteDiagram,
   loadDiagram,
@@ -25,12 +26,15 @@ class App {
   private diagram: HRDiagram;
   private dataPanel: DataPanel;
   private controls: Controls;
+  private skyViewer: SkyViewer;
   private catalogList: HTMLUListElement;
 
   constructor() {
     const diagramEl = mustGet("diagram");
     const controlsEl = mustGet("diagram-controls");
     const dataEl = mustGet("data-panel");
+    const aladinEl = mustGet("aladin-lite-div");
+    const skyStatusEl = mustGet("sky-status");
     this.catalogList = mustGet("catalog-list") as HTMLUListElement;
 
     this.dataPanel = new DataPanel(dataEl);
@@ -39,7 +43,10 @@ class App {
     this.diagram = new HRDiagram({
       container: diagramEl,
       axes: this.axes,
-      onPointClick: (s) => this.select(s.id),
+      onPointClick: (s) => {
+        this.select(s.id);
+        this.skyViewer.gotoRaDec(s.ra, s.dec);
+      },
     });
 
     this.controls = new Controls(controlsEl, this.axes, {
@@ -54,8 +61,39 @@ class App {
       onDelete: (name) => deleteDiagram(name),
     });
 
+    this.skyViewer = new SkyViewer({
+      container: aladinEl,
+      initialTarget: "Pleiades",
+      initialSurvey: "P/DSS2/color",
+      initialFov: 60,
+      onStarClick: (star) => this.toggleStar(star),
+      onStatus: (msg) => {
+        skyStatusEl.textContent = msg;
+      },
+    });
+    void this.skyViewer.setSampleStars(SAMPLE_STARS);
+
+    this.wireSkyControls();
     this.renderCatalog();
     this.refresh();
+  }
+
+  private wireSkyControls(): void {
+    const gotoInput = mustGet("goto-input") as HTMLInputElement;
+    const gotoBtn = mustGet("goto-btn") as HTMLButtonElement;
+    const surveySelect = mustGet("survey-select") as HTMLSelectElement;
+
+    const fire = () => {
+      const target = gotoInput.value.trim();
+      if (target) void this.skyViewer.goto(target);
+    };
+    gotoBtn.addEventListener("click", fire);
+    gotoInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") fire();
+    });
+    surveySelect.addEventListener("change", () => {
+      void this.skyViewer.setSurvey(surveySelect.value);
+    });
   }
 
   private renderCatalog(): void {
