@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive H-R Diagram</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>Interactive H-R Diagram</h1>
+        <p class="subtitle">
+          Pick stars, plot them, see where they fall on the
+          Hertzsprung&ndash;Russell diagram.
+        </p>
+      </header>
+
+      <main>
+        <section id="catalog-panel" aria-label="Star catalog">
+          <h2>Sample stars</h2>
+          <p class="hint">
+            Click a star to add it to the diagram. (Sky-viewer integration
+            comes in the next milestone.)
+          </p>
+          <ul id="catalog-list"></ul>
+        </section>
+
+        <section id="diagram-panel" aria-label="H-R diagram">
+          <div id="diagram-controls"></div>
+          <div id="diagram"></div>
+        </section>
+
+        <aside id="info-panel" aria-label="Selected star">
+          <h2>Selected</h2>
+          <div id="data-panel">
+            <p class="hint">Click a plotted point or a catalog entry.</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
