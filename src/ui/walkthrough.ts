@@ -4,55 +4,68 @@ interface Step {
   body: string;
 }
 
-const STORAGE_KEY = "hrd:tour-seen:v2";
+const STORAGE_KEY = "hrd:tour-seen:v3";
 
 const STEPS: Step[] = [
   {
     target: "#sky-panel",
-    title: "Welcome",
+    title: "Welcome!",
     body:
-      "This tool plots real stars on a Hertzsprung–Russell diagram. " +
-      "On the left is a window onto the night sky (Aladin Lite); on " +
-      "the right is the H-R diagram you'll build up.",
-  },
-  {
-    target: "#goto-input",
-    title: "Pick a region",
-    body:
-      'Type the name of a star or cluster (try "M45" for the Pleiades, ' +
-      'or "Sirius") and press Go. You can also pan with drag and zoom with scroll.',
-  },
-  {
-    target: "#search-btn",
-    title: "Search",
-    body:
-      "Once you've framed a region, press Search. The app queries Gaia DR3 " +
-      "for stars in the visible region and shows them as blue ＋ markers. " +
-      "Nothing is added to the diagram yet.",
-  },
-  {
-    target: "#add-all-btn",
-    title: "Add objects",
-    body:
-      'Click any blue ＋ marker to add that single star, or hit "Add all" ' +
-      "to add every search result at once. The yellow circles are pre-loaded " +
-      "reference stars (Sun, Sirius, Vega, …) — clicking one adds it too.",
+      "This tool helps you explore real stars and see how they fit on a " +
+      "famous chart called the Hertzsprung–Russell (H-R) diagram. On the " +
+      "left is a window onto the real night sky; on the right is the chart " +
+      "you'll build up as you pick stars.",
   },
   {
     target: "#diagram",
-    title: "The H-R diagram",
+    title: "What is the H-R diagram?",
     body:
-      "Each star is drawn in its black-body colour at the right luminosity " +
-      "and temperature. Click a point to highlight the star and recenter the " +
-      "sky on it. The controls below the plot switch axes and save diagrams.",
+      "It's a graph that compares stars by their temperature (across) and " +
+      "their brightness (up the side). When you plot lots of stars, they " +
+      "fall into clear groups — like the main sequence, red giants, and " +
+      "white dwarfs. That's the big idea you're about to discover.",
+  },
+  {
+    target: "#goto-input",
+    title: "Find a part of the sky",
+    body:
+      'Type the name of a star or star cluster (try "M45" for the Pleiades, ' +
+      'or "Sirius") and press Go. You can also drag the sky to move it and ' +
+      "scroll to zoom in or out.",
+  },
+  {
+    target: "#search-btn",
+    title: "Search for stars",
+    body:
+      "Once you've found a part of the sky you like, press Search. The app " +
+      "looks up real stars in that area and marks them as little blue " +
+      "crosses. Nothing has been added to the chart yet — you're in control.",
+  },
+  {
+    target: "#add-all-btn",
+    title: "Add stars to the chart",
+    body:
+      'Click a single blue cross to add just that star, or press "Add all" ' +
+      "to add the whole bunch. You can also pick from the named star sets " +
+      "in the side panel (Sun-like stars, red dwarfs, white dwarfs, …) " +
+      "to watch each group appear in its own part of the chart.",
+  },
+  {
+    target: "#diagram",
+    title: "Watch the patterns appear",
+    body:
+      "Each dot is drawn in the colour the star really looks (red for cool " +
+      "stars, blue for very hot ones). Click any dot to see that star's " +
+      "info on the right and to recentre the sky on it.",
   },
   {
     target: "#info-panel",
-    title: "Inspect & save",
+    title: "Read the star's info",
     body:
-      "The selected star's full data and a sky cutout appear here. Use the " +
-      'controls below the diagram to switch axes, clear points, or save the ' +
-      "current diagram to local storage.",
+      "Pick any star and you'll see its temperature, brightness, distance " +
+      "and a small picture of where it sits in the sky. The chart options " +
+      "below the graph let you switch between brightness and magnitude, " +
+      "and save your chart to come back to later.",
   },
 ];
 

@@ -4,6 +4,8 @@ import {
   absoluteMagnitude,
   blackbodyRgb,
   bvFromTemp,
+  deriveSpectralType,
+  kelvinToCelsius,
   luminositySolar,
   plotStar,
   tempFromBV,
@@ -87,6 +89,41 @@ describe("blackbodyRgb", () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThanOrEqual(255);
     }
+  });
+});
+
+describe("deriveSpectralType", () => {
+  it("classifies the Sun as G near 5778 K", () => {
+    const s = deriveSpectralType(5778);
+    expect(s.startsWith("G")).toBe(true);
+  });
+
+  it("classifies a hot star as O or B", () => {
+    expect(deriveSpectralType(35000).startsWith("O")).toBe(true);
+    expect(deriveSpectralType(20000).startsWith("B")).toBe(true);
+  });
+
+  it("classifies an M dwarf", () => {
+    expect(deriveSpectralType(3000).startsWith("M")).toBe(true);
+  });
+
+  it("appends V for main-sequence absolute magnitudes", () => {
+    expect(deriveSpectralType(5778, 4.83)).toMatch(/V$/);
+  });
+
+  it("flags white dwarfs when faint and hot", () => {
+    expect(deriveSpectralType(15000, 11.2)).toContain("white dwarf");
+  });
+
+  it("appends I for supergiants", () => {
+    expect(deriveSpectralType(3500, -5.5)).toMatch(/I$/);
+  });
+});
+
+describe("kelvinToCelsius", () => {
+  it("converts standard temperatures correctly", () => {
+    expect(kelvinToCelsius(273.15)).toBeCloseTo(0, 5);
+    expect(kelvinToCelsius(5778)).toBeCloseTo(5504.85, 2);
   });
 });
 

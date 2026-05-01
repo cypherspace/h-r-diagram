@@ -172,10 +172,54 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   stroke-width: 2.5;
 }
 
-/* info panel */
-#data-panel dl { margin: 0; font-size: 0.85rem; }
-#data-panel dt { color: var(--muted); margin-top: 0.4rem; }
-#data-panel dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* info panel — selected star */
+.star-name {
+  margin: 0.25rem 0 0.6rem;
+  font-size: 1.15rem;
+  color: var(--fg);
+}
+.headline-stat {
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.35rem;
+}
+.headline-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.headline-value {
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.1rem;
+}
+.secondary-stats {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+}
+.secondary-stats dt {
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+.secondary-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.extra-details {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+.extra-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.extra-details summary:hover {
+  color: var(--fg);
+}
 /* walkthrough — backdrop dims the page, tooltip floats above with its
    own stacking context. Highlight is purely visual (outline + glow)
    to avoid stacking-context fights. */
@@ -245,25 +289,152 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   margin: 0 auto 0.5rem;
 }
 
-#catalog-details { margin-top: 1rem; font-size: 0.85rem; }
-#catalog-details summary { cursor: pointer; color: var(--muted); }
-#catalog-list {
+/* sample-star sets */
+#star-sets {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.star-set {
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+.star-set summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  list-style: none;
+}
+.star-set summary::-webkit-details-marker { display: none; }
+.star-set summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.star-set[open] summary::before { transform: rotate(90deg); }
+.set-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.set-label { flex: 1; color: var(--fg); }
+.set-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 0 0.45rem;
+}
+.set-description {
+  margin: 0.4rem 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.set-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.set-actions button {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.set-actions button:hover { background: #243057; }
+.set-vis {
+  color: var(--muted);
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.set-stars {
   list-style: none;
   padding: 0;
-  margin: 0.5rem 0 0;
-  max-height: 240px;
-  overflow: auto;
+  margin: 0;
 }
-#catalog-list li {
-  padding: 0.3rem 0.5rem;
-  margin: 0.15rem 0;
-  background: var(--panel-2);
+.set-stars li {
+  padding: 0.25rem 0.5rem;
+  margin: 0.1rem 0;
+  background: var(--panel);
   border-radius: 4px;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
-  font-size: 0.85rem;
+  align-items: center;
+  font-size: 0.82rem;
 }
-#catalog-list li:hover { background: #243057; }
-#catalog-list li.added { opacity: 0.5; }
-#catalog-list li .meta { color: var(--muted); font-size: 0.75rem; }
+.set-stars li:hover { background: #243057; }
+.set-stars li.added { opacity: 0.5; }
+.set-stars li .meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+/* graph options collapsible */
+#graph-options {
+  margin-top: 0.5rem;
+}
+#graph-options > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+  padding: 0.2rem 0;
+}
+#graph-options > summary:hover { color: var(--fg); }
+#graph-options[open] > summary { color: var(--accent); }
+
+/* view info — Aladin overlays hidden by default */
+.aladin-frameChoice,
+.aladin-projectionChoice,
+.aladin-cooFrame,
+.aladin-location { display: none !important; }
+body.view-info-open .aladin-frameChoice,
+body.view-info-open .aladin-projectionChoice,
+body.view-info-open .aladin-cooFrame,
+body.view-info-open .aladin-location { display: block !important; }
+
+#view-info-details {
+  font-size: 0.78rem;
+}
+#view-info-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+#view-info-details summary:hover { color: var(--fg); }
+#view-info-details p {
+  margin: 0.3rem 0 0;
+  line-height: 1.35;
+}
+
+/* Aladin full-screen — hide everything else so the sky takes the viewport */
+body.aladin-fullscreen header,
+body.aladin-fullscreen #diagram-panel,
+body.aladin-fullscreen #info-panel { display: none !important; }
+body.aladin-fullscreen #app {
+  padding: 0;
+  gap: 0;
+}
+body.aladin-fullscreen main {
+  display: block;
+  min-height: 100vh;
+}
+body.aladin-fullscreen #sky-panel {
+  border-radius: 0;
+  height: 100vh;
+}

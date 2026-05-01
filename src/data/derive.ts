@@ -90,3 +90,73 @@ export function blackbodyColor(tempK: number): string {
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
+
+// ---- spectral classification ----
+
+// Standard Morgan-Keenan boundaries (upper temperature for each class).
+// Anything hotter than the O floor is still O.
+const MK_BOUNDS: Array<{ letter: string; min: number; max: number }> = [
+  { letter: "O", min: 30000, max: 60000 },
+  { letter: "B", min: 10000, max: 30000 },
+  { letter: "A", min: 7500, max: 10000 },
+  { letter: "F", min: 6000, max: 7500 },
+  { letter: "G", min: 5200, max: 6000 },
+  { letter: "K", min: 3700, max: 5200 },
+  { letter: "M", min: 2400, max: 3700 },
+];
+
+// Map T_eff to a Morgan-Keenan class with subclass digit (e.g. "G2",
+// "M5"). The digit is interpolated linearly inside the class range
+// where 0 = hottest end and 9 = coolest end. If absMagV is provided,
+// append a luminosity class hint:
+//   M_V > 10 and T_eff > 7000 -> "D" (white dwarf)
+//   M_V < -2                  -> "I" (supergiant)
+//   M_V < 1 and T_eff < 5500  -> "III" (giant)
+//   else                      -> "V" (main sequence)
+// All of this is heuristic and intended only for visualisation; rows
+// with derived classes should be marked "(estimated)" in the UI.
+export function deriveSpectralType(teff: number, absMagV?: number): string {
+  const t = clamp(teff, 1000, 60000);
+
+  let letter = "M";
+  let min = MK_BOUNDS[MK_BOUNDS.length - 1].min;
+  let max = MK_BOUNDS[MK_BOUNDS.length - 1].max;
+  for (const b of MK_BOUNDS) {
+    if (t >= b.min && t <= b.max) {
+      letter = b.letter;
+      min = b.min;
+      max = b.max;
+      break;
+    }
+    if (t > b.max && b.letter === "O") {
+      letter = "O";
+      min = b.min;
+      max = b.max;
+      break;
+    }
+  }
+  // Subclass: 0 at the hot end (max), 9 at the cool end (min).
+  const frac = (max - t) / (max - min);
+  const digit = clamp(Math.round(frac * 9), 0, 9);
+  const main = `${letter}${digit}`;
+
+  if (absMagV == null || !Number.isFinite(absMagV)) return main;
+
+  let lumClass: string;
+  if (absMagV > 10 && teff > 7000) {
+    lumClass = `D${letter}`; // white-dwarf style label
+    return `${main} (white dwarf, ≈${lumClass})`;
+  } else if (absMagV < -2) {
+    lumClass = "I";
+  } else if (absMagV < 1 && teff < 5500) {
+    lumClass = "III";
+  } else {
+    lumClass = "V";
+  }
+  return `${main}${lumClass}`;
+}
+
+// ---- Kelvin <-> Celsius ----
+export function kelvinToCelsius(k: number): number {
+  return k - 273.15;
+}

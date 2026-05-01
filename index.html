@@ -20,8 +20,8 @@
         <div>
           <h1>Interactive H-R Diagram</h1>
           <p class="subtitle">
-            Click stars on the sky, watch them appear on the
-            Hertzsprung&ndash;Russell diagram.
+            Pick stars from the night sky and watch the
+            Hertzsprung&ndash;Russell diagram come together.
           </p>
         </div>
         <button id="tour-btn" type="button" title="Replay the tour">
@@ -33,23 +33,23 @@
         <section id="sky-panel" aria-label="Night sky viewer">
           <div id="sky-controls">
             <label>
-              Goto
+              Find
               <input id="goto-input" type="text" placeholder="e.g. M45, Sirius" />
             </label>
             <button id="goto-btn">Go</button>
             <label>
-              Survey
+              Sky picture
               <select id="survey-select">
-                <option value="P/DSS2/color">DSS2 color</option>
-                <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS DR1</option>
-                <option value="P/SDSS9/color">SDSS9 color</option>
-                <option value="P/2MASS/color">2MASS</option>
+                <option value="P/DSS2/color">DSS2 (colour)</option>
+                <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS</option>
+                <option value="P/SDSS9/color">SDSS</option>
+                <option value="P/2MASS/color">2MASS (infrared)</option>
               </select>
             </label>
-            <button id="search-btn" title="Query Gaia for stars in the visible region (does not add them)">
+            <button id="search-btn" title="Look up real stars in the visible part of the sky (doesn't add them yet)">
               Search
             </button>
-            <button id="add-all-btn" title="Add every search result to the diagram">
+            <button id="add-all-btn" title="Add every search result to the chart">
               Add all
             </button>
             <button id="clear-candidates-btn" title="Clear search-result markers from the sky">
@@ -59,25 +59,32 @@
               Limit
               <input id="region-limit" type="number" min="1" max="500" value="50" />
             </label>
+            <details id="view-info-details">
+              <summary>View info</summary>
+              <p class="hint">
+                When this is open, the sky viewer shows the projection,
+                coordinate system, and the cursor's position in the sky.
+              </p>
+            </details>
             <span class="hint" id="sky-status">Loading sky&hellip;</span>
           </div>
           <div id="aladin-lite-div"></div>
         </section>
 
         <section id="diagram-panel" aria-label="H-R diagram">
-          <div id="diagram-controls"></div>
           <div id="diagram"></div>
+          <details id="graph-options" open>
+            <summary>Graph options</summary>
+            <div id="diagram-controls"></div>
+          </details>
         </section>
 
         <aside id="info-panel" aria-label="Selected star">
-          <h2>Selected</h2>
+          <h2>Selected star</h2>
           <div id="data-panel">
-            <p class="hint">Click a sample star or a plotted point.</p>
+            <p class="hint">Click a star marker on the sky or a dot on the chart.</p>
           </div>
-          <details id="catalog-details">
-            <summary>Sample stars (quick add)</summary>
-            <ul id="catalog-list"></ul>
-          </details>
+          <div id="star-sets"></div>
         </aside>
       </main>
     </div>

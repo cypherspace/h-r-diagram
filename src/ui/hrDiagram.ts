@@ -224,16 +224,16 @@ export class HRDiagram {
 
   private xLabel(): string {
     if (this.axes.xMode === "temperature") {
-      return `Effective temperature T_eff (K)${this.axes.xScale === "log" ? ", log" : ""} — hotter ←`;
+      return "Surface temperature (K) — hotter ←";
     }
-    return `B − V color index${this.axes.xScale === "log" ? ", log" : ""}`;
+    return "Colour (blue ← → red)";
   }
 
   private yLabel(): string {
     if (this.axes.yMode === "luminosity") {
-      return `Luminosity L / L⊙${this.axes.yScale === "log" ? ", log" : ""}`;
+      return "Brightness compared to the Sun";
     }
-    return `Absolute magnitude M_V${this.axes.yScale === "log" ? ", log" : ""}`;
+    return "Absolute magnitude — brighter ↑";
   }
 }
 

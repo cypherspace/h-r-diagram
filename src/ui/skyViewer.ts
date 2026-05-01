@@ -1,4 +1,5 @@
 import type { Star } from "../types";
+import type { MarkerShape, StarSet } from "../data/sampleStars";
 
 declare global {
   interface Window {
@@ -15,6 +16,8 @@ interface AladinSource {
 interface AladinCatalog {
   addSources: (sources: AladinSource[]) => void;
   removeAll: () => void;
+  show: () => void;
+  hide: () => void;
 }
 
 interface AladinInstance {
@@ -50,10 +53,7 @@ interface AladinNamespace {
   ) => AladinSource;
 }
 
-export interface CandidateStar extends Star {
-  // tag preserved on the marker so the sky-viewer click handler can hand
-  // it back to the app without a separate lookup.
-}
+export interface CandidateStar extends Star {}
 
 export interface SkyViewerOptions {
   container: HTMLElement;
@@ -67,7 +67,7 @@ export interface SkyViewerOptions {
 
 export class SkyViewer {
   private aladin?: AladinInstance;
-  private sampleCatalog?: AladinCatalog;
+  private setCatalogs = new Map<string, AladinCatalog>();
   private candidateCatalog?: AladinCatalog;
   private samplesById = new Map<string, Star>();
   private candidatesById = new Map<string, CandidateStar>();
@@ -83,7 +83,7 @@ export class SkyViewer {
     const A = await waitForAladin();
     if (!A) {
       this.opts.onStatus?.(
-        "Sky viewer failed to load (Aladin Lite CDN unreachable).",
+        "Sky viewer failed to load. Check your internet connection.",
       );
       return;
     }
@@ -100,21 +100,16 @@ export class SkyViewer {
       showGotoControl: false,
       showShareControl: false,
       showCooGrid: false,
+      showFrame: false,
+      showProjectionControl: false,
     });
 
-    this.sampleCatalog = A.catalog({
-      name: "Reference stars",
-      sourceSize: 14,
-      color: "#ffd166",
-      shape: "circle",
-    });
     this.candidateCatalog = A.catalog({
       name: "Search results",
       sourceSize: 10,
       color: "#6cc4ff",
       shape: "plus",
     });
-    this.aladin.addCatalog(this.sampleCatalog);
     this.aladin.addCatalog(this.candidateCatalog);
 
     this.aladin.on("objectClicked", (...args: unknown[]) => {
@@ -131,33 +126,57 @@ export class SkyViewer {
       if (sample) this.opts.onSampleClick?.(sample);
     });
 
-    this.opts.onStatus?.("Ready. Pan + zoom to find a region, then Search.");
-  }
-
-  async getCenter(): Promise<[number, number] | null> {
-    await this.ready;
-    return this.aladin?.getRaDec() ?? null;
-  }
-
-  async getFov(): Promise<[number, number] | null> {
-    await this.ready;
-    return this.aladin?.getFov() ?? null;
-  }
-
-  async setSampleStars(stars: Star[]): Promise<void> {
-    await this.ready;
-    if (!this.sampleCatalog || !window.A) return;
-    this.samplesById.clear();
-    const sources = stars.map((s) => {
-      this.samplesById.set(s.id, s);
-      return window.A!.source(s.ra, s.dec, {
-        id: s.id,
-        name: s.name,
-        spectralType: s.spectralType ?? "",
-      });
+    // Notify the host whenever Aladin's full-screen mode changes so the
+    // surrounding UI can collapse / restore.
+    document.addEventListener("fullscreenchange", () => {
+      const fs = document.fullscreenElement;
+      const inAladin =
+        !!fs &&
+        (fs === this.opts.container || this.opts.container.contains(fs));
+      document.body.classList.toggle("aladin-fullscreen", inAladin);
     });
-    this.sampleCatalog.removeAll();
-    this.sampleCatalog.addSources(sources);
+
+    this.opts.onStatus?.(
+      "Drag to move, scroll to zoom. Then press Search to find stars.",
+    );
+  }
+
+  registerSets(sets: StarSet[]): Promise<void> {
+    return this.ready.then(() => {
+      if (!this.aladin || !window.A) return;
+      for (const set of sets) {
+        if (this.setCatalogs.has(set.id)) continue;
+        const cat = window.A.catalog({
+          name: set.label,
+          sourceSize: 14,
+          color: set.markerColor,
+          shape: set.markerShape as MarkerShape,
+        });
+        this.aladin.addCatalog(cat);
+        this.setCatalogs.set(set.id, cat);
+
+        // Pre-populate marker sources for the set.
+        const sources: AladinSource[] = [];
+        for (const s of set.stars) {
+          this.samplesById.set(s.id, s);
+          sources.push(
+            window.A.source(s.ra, s.dec, {
+              id: s.id,
+              name: s.name,
+              spectralType: s.spectralType ?? "",
+            }),
+          );
+        }
+        if (sources.length > 0) cat.addSources(sources);
+      }
+    });
+  }
+
+  setSetVisibility(setId: string, visible: boolean): void {
+    const cat = this.setCatalogs.get(setId);
+    if (!cat) return;
+    if (visible) cat.show();
+    else cat.hide();
   }
 
   async setCandidates(candidates: CandidateStar[]): Promise<void> {
@@ -177,8 +196,6 @@ export class SkyViewer {
 
   removeCandidate(id: string): void {
     this.candidatesById.delete(id);
-    // Aladin's catalog doesn't expose a "remove one source" call in v3,
-    // so we rebuild the catalog from the remaining candidates.
     void this.setCandidates(Array.from(this.candidatesById.values()));
   }
 
@@ -191,17 +208,27 @@ export class SkyViewer {
     return Array.from(this.candidatesById.values());
   }
 
+  async getCenter(): Promise<[number, number] | null> {
+    await this.ready;
+    return this.aladin?.getRaDec() ?? null;
+  }
+
+  async getFov(): Promise<[number, number] | null> {
+    await this.ready;
+    return this.aladin?.getFov() ?? null;
+  }
+
   async goto(target: string): Promise<void> {
     await this.ready;
     if (!this.aladin) return;
     return new Promise((resolve) => {
       this.aladin!.gotoObject(target, {
         success: () => {
-          this.opts.onStatus?.(`Centered on ${target}.`);
+          this.opts.onStatus?.(`Centred on ${target}.`);
           resolve();
         },
         error: () => {
-          this.opts.onStatus?.(`Could not resolve "${target}".`);
+          this.opts.onStatus?.(`Could not find "${target}".`);
           resolve();
         },
       });

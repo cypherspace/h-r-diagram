@@ -49,15 +49,20 @@ export class Controls {
 
     this.container.appendChild(
       this.makeSelect(
-        "Y",
+        "Y axis",
         [
-          ["luminosity", "Luminosity (L/L⊙)"],
+          ["luminosity", "Brightness (× the Sun)"],
           ["absoluteMagnitude", "Absolute magnitude"],
         ],
         this.axes.yMode,
         (v) => {
-          this.axes = { ...this.axes, yMode: v as AxisConfig["yMode"] };
+          const yMode = v as AxisConfig["yMode"];
+          // Pick a sensible scale to match the new axis mode.
+          const yScale: AxisConfig["yScale"] =
+            yMode === "luminosity" ? "log" : "linear";
+          this.axes = { ...this.axes, yMode, yScale };
           this.cb.onAxesChange(this.axes);
+          this.render();
         },
       ),
     );
@@ -79,15 +84,19 @@ export class Controls {
 
     this.container.appendChild(
       this.makeSelect(
-        "X",
+        "X axis",
         [
           ["temperature", "Temperature (K)"],
-          ["bv", "B − V color"],
+          ["bv", "Colour (B − V)"],
         ],
         this.axes.xMode,
         (v) => {
-          this.axes = { ...this.axes, xMode: v as AxisConfig["xMode"] };
+          const xMode = v as AxisConfig["xMode"];
+          const xScale: AxisConfig["xScale"] =
+            xMode === "temperature" ? "log" : "linear";
+          this.axes = { ...this.axes, xMode, xScale };
           this.cb.onAxesChange(this.axes);
+          this.render();
         },
       ),
     );
