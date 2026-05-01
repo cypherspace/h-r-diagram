@@ -77,15 +77,30 @@ export class DataPanel {
     );
     this.container.appendChild(secondary);
 
-    // Wikipedia link (only for named/curated stars).
+    // External-info links: Wikipedia for named stars, SIMBAD for Gaia
+    // stars. SIMBAD aggregates cross-identifications, papers and
+    // photometry for every Gaia DR3 source.
+    const links = document.createElement("div");
+    links.className = "external-links";
     if (star.wikipedia) {
-      const link = document.createElement("a");
-      link.className = "wikipedia-link";
-      link.href = `https://en.wikipedia.org/wiki/${star.wikipedia}`;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = "Read about this star on Wikipedia →";
-      this.container.appendChild(link);
+      links.appendChild(
+        externalLink(
+          `https://en.wikipedia.org/wiki/${star.wikipedia}`,
+          "Read about this star on Wikipedia →",
+        ),
+      );
+    }
+    if (star.id.startsWith("gaia-")) {
+      const sourceId = star.id.slice("gaia-".length);
+      links.appendChild(
+        externalLink(
+          `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+${sourceId}`,
+          "Look up this star on SIMBAD →",
+        ),
+      );
+    }
+    if (links.childElementCount > 0) {
+      this.container.appendChild(links);
     }
 
     // Hidden details.
@@ -113,6 +128,16 @@ export class DataPanel {
     details.appendChild(dl);
     this.container.appendChild(details);
   }
+}
+
+function externalLink(href: string, text: string): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "external-link";
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = text;
+  return a;
 }
 
 function headlineStat(label: string, value: string): HTMLElement {

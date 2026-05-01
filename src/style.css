@@ -235,9 +235,14 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
-.wikipedia-link {
+.external-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+}
+.external-link {
   display: block;
-  margin: 0.5rem 0 0.5rem;
   padding: 0.4rem 0.6rem;
   background: var(--panel-2);
   border: 1px solid var(--accent-2);
@@ -247,7 +252,7 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   font-size: 0.85rem;
   text-align: center;
 }
-.wikipedia-link:hover {
+.external-link:hover {
   background: #243057;
 }
 
@@ -441,7 +446,8 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
 #graph-options > summary:hover { color: var(--fg); }
 #graph-options[open] > summary { color: var(--accent); }
 
-/* view info — Aladin overlays hidden by default */
+/* Star map options — Aladin's projection/coordinate overlays are
+   hidden until the user opts in via "Show projection & coordinates". */
 .aladin-frameChoice,
 .aladin-projectionChoice,
 .aladin-cooFrame,
@@ -451,17 +457,31 @@ body.view-info-open .aladin-projectionChoice,
 body.view-info-open .aladin-cooFrame,
 body.view-info-open .aladin-location { display: block !important; }
 
-#view-info-details {
-  font-size: 0.78rem;
+#map-options-details {
+  font-size: 0.82rem;
 }
-#view-info-details summary {
+#map-options-details summary {
   cursor: pointer;
   color: var(--muted);
 }
-#view-info-details summary:hover { color: var(--fg); }
-#view-info-details p {
-  margin: 0.3rem 0 0;
-  line-height: 1.35;
+#map-options-details summary:hover { color: var(--fg); }
+#map-options-details[open] summary { color: var(--accent); }
+
+.map-options-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--panel-2);
+  border-radius: 4px;
+}
+.map-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--fg);
+  font-size: 0.82rem;
 }
 
 /* Aladin full-screen — hide everything else so the sky takes the viewport.

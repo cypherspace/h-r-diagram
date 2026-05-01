@@ -117,7 +117,9 @@ class App {
     const addAllBtn = mustGet("add-all-btn") as HTMLButtonElement;
     const clearCandidatesBtn = mustGet("clear-candidates-btn") as HTMLButtonElement;
     const regionLimit = mustGet("region-limit") as HTMLInputElement;
-    const viewInfoDetails = mustGet("view-info-details") as HTMLDetailsElement;
+    const showConstellations = mustGet("opt-show-constellations") as HTMLInputElement;
+    const showMarkers = mustGet("opt-show-markers") as HTMLInputElement;
+    const showMapInfo = mustGet("opt-show-mapinfo") as HTMLInputElement;
 
     const fire = () => {
       const target = gotoInput.value.trim();
@@ -139,8 +141,14 @@ class App {
       this.skyViewer.clearCandidates();
       this.skyStatusEl.textContent = "Search results cleared.";
     });
-    viewInfoDetails.addEventListener("toggle", () => {
-      document.body.classList.toggle("view-info-open", viewInfoDetails.open);
+    showConstellations.addEventListener("change", () => {
+      this.skyViewer.setConstellationsVisible(showConstellations.checked);
+    });
+    showMarkers.addEventListener("change", () => {
+      this.skyViewer.setAllMarkersVisible(showMarkers.checked);
+    });
+    showMapInfo.addEventListener("change", () => {
+      document.body.classList.toggle("view-info-open", showMapInfo.checked);
     });
   }
 

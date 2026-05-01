@@ -1,5 +1,6 @@
 import type { Star } from "../types";
 import type { MarkerShape, StarSet } from "../data/sampleStars";
+import { CONSTELLATIONS } from "../data/constellations";
 
 declare global {
   interface Window {
@@ -20,6 +21,18 @@ interface AladinCatalog {
   hide: () => void;
 }
 
+// Graphic overlays (lines / polygons) live in a different Aladin object
+// from catalogs. Aladin Lite v3 exposes `A.graphicOverlay({...})` and
+// `A.polyline([[ra, dec], ...])` for this. The interface below matches
+// the subset we use so TypeScript stops shouting.
+interface AladinGraphicOverlay {
+  show: () => void;
+  hide: () => void;
+  add: (footprint: unknown) => void;
+  addFootprints: (footprints: unknown[]) => void;
+  removeAll?: () => void;
+}
+
 interface AladinInstance {
   setImageSurvey: (survey: string) => void;
   gotoObject: (
@@ -33,6 +46,7 @@ interface AladinInstance {
   getRaDec: () => [number, number];
   getFov: () => [number, number];
   addCatalog: (cat: AladinCatalog) => void;
+  addOverlay: (overlay: AladinGraphicOverlay) => void;
   on: (
     event: string,
     handler: (...args: unknown[]) => void,
@@ -46,11 +60,13 @@ interface AladinNamespace {
     opts: Record<string, unknown>,
   ) => AladinInstance;
   catalog: (opts: Record<string, unknown>) => AladinCatalog;
+  graphicOverlay?: (opts: Record<string, unknown>) => AladinGraphicOverlay;
   source: (
     ra: number,
     dec: number,
     data: Record<string, unknown>,
   ) => AladinSource;
+  polyline?: (coords: Array<[number, number]>, opts?: Record<string, unknown>) => unknown;
 }
 
 export interface CandidateStar extends Star {}
@@ -69,10 +85,16 @@ export class SkyViewer {
   private aladin?: AladinInstance;
   private setCatalogs = new Map<string, AladinCatalog>();
   private candidateCatalog?: AladinCatalog;
+  private constellationOverlay?: AladinGraphicOverlay;
   private samplesById = new Map<string, Star>();
   private candidatesById = new Map<string, CandidateStar>();
   private opts: SkyViewerOptions;
   private ready: Promise<void>;
+  // Master toggles + per-set intent so the master and per-set checkboxes
+  // can coexist without overwriting each other.
+  private masterMarkersVisible = true;
+  private constellationsVisible = false;
+  private setVisibilityIntent = new Map<string, boolean>();
 
   constructor(opts: SkyViewerOptions) {
     this.opts = opts;
@@ -183,10 +205,60 @@ export class SkyViewer {
   }
 
   setSetVisibility(setId: string, visible: boolean): void {
-    const cat = this.setCatalogs.get(setId);
-    if (!cat) return;
-    if (visible) cat.show();
-    else cat.hide();
+    this.setVisibilityIntent.set(setId, visible);
+    this.applyMarkerVisibility();
+  }
+
+  setAllMarkersVisible(visible: boolean): void {
+    this.masterMarkersVisible = visible;
+    this.applyMarkerVisibility();
+  }
+
+  setConstellationsVisible(visible: boolean): void {
+    this.constellationsVisible = visible;
+    void this.ready.then(() => this.applyConstellationVisibility());
+  }
+
+  private applyMarkerVisibility(): void {
+    for (const [id, cat] of this.setCatalogs) {
+      const intent = this.setVisibilityIntent.get(id) ?? true;
+      if (this.masterMarkersVisible && intent) cat.show();
+      else cat.hide();
+    }
+  }
+
+  private applyConstellationVisibility(): void {
+    if (!this.aladin || !window.A) return;
+    if (this.constellationsVisible) {
+      // Lazy-create the overlay the first time it's switched on so the
+      // Aladin globals are guaranteed loaded.
+      if (!this.constellationOverlay) {
+        if (
+          typeof window.A.graphicOverlay !== "function" ||
+          typeof window.A.polyline !== "function"
+        ) {
+          this.opts.onStatus?.(
+            "Constellation lines aren't available in this build of the sky viewer.",
+          );
+          return;
+        }
+        const overlay = window.A.graphicOverlay({
+          color: "#9aa8d8",
+          lineWidth: 1.2,
+          name: "Constellations",
+        });
+        this.aladin.addOverlay(overlay);
+        for (const c of CONSTELLATIONS) {
+          for (const segment of c.segments) {
+            overlay.add(window.A.polyline(segment));
+          }
+        }
+        this.constellationOverlay = overlay;
+      }
+      this.constellationOverlay.show();
+    } else {
+      this.constellationOverlay?.hide();
+    }
   }
 
   async setCandidates(candidates: CandidateStar[]): Promise<void> {
