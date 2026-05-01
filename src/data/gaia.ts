@@ -1,4 +1,5 @@
 import type { Star } from "../types";
+import { absoluteMagnitude, deriveSpectralType } from "./derive";
 
 // VizieR TAP (CDS Strasbourg). Known to be CORS-enabled for browser apps,
 // unlike the ESA Gaia archive which is unreliable from the browser.
@@ -249,20 +250,23 @@ export function gaiaRowToStar(row: GaiaRow): Star {
     teff = row.teff_k;
   } else if (row.bp_rp != null && Number.isFinite(row.bp_rp)) {
     teff = teffFromBpRp(row.bp_rp);
-    notes = "T_eff estimated from Gaia BP-RP";
+    notes = "Temperature estimated from the star's colour.";
   } else {
     teff = 5778;
-    notes = "T_eff unknown; defaulted to solar";
+    notes = "Temperature unknown; assumed sun-like.";
   }
+  const absMag = absoluteMagnitude(row.g_mag, distancePc);
+  const spectralType = `${deriveSpectralType(teff, absMag)} (estimated)`;
   return {
     id: `gaia-${row.source_id}`,
-    name: `Gaia DR3 ${row.source_id}`,
+    name: `Star ${row.source_id}`,
     ra: row.ra,
     dec: row.dec,
     mV: row.g_mag,
     distancePc,
     teff,
     bv: row.bp_rp ?? undefined,
+    spectralType,
     notes,
   };
 }
