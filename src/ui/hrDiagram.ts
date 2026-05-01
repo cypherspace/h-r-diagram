@@ -125,11 +125,19 @@ export class HRDiagram {
       .attr("text-anchor", "middle")
       .text(this.yLabel());
 
-    // points
+    // points — skip stars whose plotted coordinates aren't finite numbers
+    // (e.g. NaN luminosity from a corrupt input). d3 scales handle
+    // out-of-range values via .clamp(true), but NaN still propagates.
+    const plottable = this.stars.filter((d) => {
+      const x = xValue(d);
+      const y = yValue(d);
+      return Number.isFinite(x) && Number.isFinite(y);
+    });
+
     this.root
       .append("g")
       .selectAll<SVGCircleElement, PlottedStar>("circle.point")
-      .data(this.stars, (d) => d.id)
+      .data(plottable, (d) => d.id)
       .join("circle")
       .attr("class", "point")
       .classed("selected", (d) => d.id === this.selectedId)
@@ -156,35 +164,41 @@ export class HRDiagram {
     return (d) => d.absMag;
   }
 
+  // Fixed axis bounds. Real H-R diagrams span ~10 decades in luminosity
+  // and ~1 decade in temperature; pinning the domain keeps the axes
+  // legible regardless of which stars are loaded and avoids breakage from
+  // outlier Gaia rows with tiny parallaxes (huge derived luminosities).
+  private static readonly BOUNDS = {
+    teff: [1500, 40000] as const,        // hot ↑ (left in plot)
+    bv: [-0.5, 2.5] as const,            // bluer ↑ (left in plot)
+    luminosity: [1e-4, 1e6] as const,    // L / L☉ (log)
+    absMag: [-12, 18] as const,          // M_V; brighter (more negative) ↑
+  };
+
   private makeXScale(innerW: number): d3.ScaleContinuousNumeric<number, number> {
-    const values = this.stars.map(this.xValueFn());
     if (this.axes.xMode === "temperature") {
-      const [min, max] = niceRange(values, 2500, 40000);
+      const [lo, hi] = HRDiagram.BOUNDS.teff;
       const scale =
         this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-      // Hot stars on the LEFT — invert range.
-      return scale.domain([max, min]).range([0, innerW]);
+      return scale.domain([hi, lo]).range([0, innerW]).clamp(true);
     }
-    const [min, max] = niceRange(values, -0.5, 2.5);
+    const [lo, hi] = HRDiagram.BOUNDS.bv;
     const scale =
       this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-    return scale.domain([min, max]).range([0, innerW]);
+    return scale.domain([lo, hi]).range([0, innerW]).clamp(true);
   }
 
   private makeYScale(innerH: number): d3.ScaleContinuousNumeric<number, number> {
-    const values = this.stars.map(this.yValueFn());
     if (this.axes.yMode === "luminosity") {
-      const [min, max] = niceRange(values, 1e-4, 1e6);
+      const [lo, hi] = HRDiagram.BOUNDS.luminosity;
       const scale =
         this.axes.yScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-      // Luminous stars on TOP — domain low->high, range bottom->top.
-      return scale.domain([min, max]).range([innerH, 0]);
+      return scale.domain([lo, hi]).range([innerH, 0]).clamp(true);
     }
-    const [min, max] = niceRange(values, -10, 16);
+    const [lo, hi] = HRDiagram.BOUNDS.absMag;
     const scale =
       this.axes.yScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-    // Brighter (more negative magnitude) on TOP — invert.
-    return scale.domain([max, min]).range([innerH, 0]);
+    return scale.domain([hi, lo]).range([innerH, 0]).clamp(true);
   }
 
   private makeXAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
@@ -222,18 +236,3 @@ export class HRDiagram {
   }
 }
 
-function niceRange(
-  values: number[],
-  fallbackMin: number,
-  fallbackMax: number,
-): [number, number] {
-  if (values.length === 0) return [fallbackMin, fallbackMax];
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  if (min === max) {
-    const pad = Math.abs(min) * 0.1 || 1;
-    return [min - pad, max + pad];
-  }
-  const pad = (max - min) * 0.1;
-  return [min - pad, max + pad];
-}

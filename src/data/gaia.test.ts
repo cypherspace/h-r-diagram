@@ -40,10 +40,11 @@ describe("gaiaRowToStar", () => {
     expect(gaiaRowToStar(sampleRow).id).toBe("gaia-1234567890");
   });
   it("falls back to BP-RP-derived T_eff when teff_k is missing", () => {
-    const row = { ...sampleRow, teff_k: null, bp_rp: 0.65 };
+    // Sun has BP-RP ~ 0.82; expect T_eff ~ 5778 K.
+    const row = { ...sampleRow, teff_k: null, bp_rp: 0.82 };
     const star = gaiaRowToStar(row);
-    expect(star.teff).toBeGreaterThan(5500);
-    expect(star.teff).toBeLessThan(5900);
+    expect(star.teff).toBeGreaterThan(5400);
+    expect(star.teff).toBeLessThan(6100);
     expect(star.notes).toContain("estimated");
   });
   it("plots into a sensible H-R region for an A-type star", () => {

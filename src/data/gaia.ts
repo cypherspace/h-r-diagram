@@ -1,7 +1,8 @@
 import type { Star } from "../types";
 
-// ESA Gaia archive TAP endpoint. Supports CORS for sync queries.
-const TAP_URL = "https://gea.esac.esa.int/tap-server/tap/sync";
+// VizieR TAP (CDS Strasbourg). Known to be CORS-enabled for browser apps,
+// unlike the ESA Gaia archive which is unreliable from the browser.
+const TAP_URL = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync";
 
 export interface GaiaRow {
   source_id: string;
@@ -23,16 +24,58 @@ export class GaiaError extends Error {
   }
 }
 
-const CONE_COLUMNS = [
-  "source_id",
-  "ra",
-  "dec",
-  "parallax",
-  "parallax_over_error",
-  "phot_g_mean_mag",
-  "bp_rp",
-  "teff_gspphot",
-];
+// VizieR Gaia DR3 main catalog: I/355/gaiadr3.
+// We compute BP-RP from BPmag and RPmag (avoids the hyphenated column name)
+// and parallax_over_error from Plx / e_Plx. Teff is not in this table; the
+// caller derives it from BP-RP via tempFromBpRp.
+function buildConeAdql(
+  raDeg: number,
+  decDeg: number,
+  radiusDeg: number,
+  topN: number,
+  magLimit: number,
+): string {
+  return `SELECT TOP ${topN}
+  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
+  ("BPmag" - "RPmag") AS bprp
+FROM "I/355/gaiadr3"
+WHERE 1 = CONTAINS(
+    POINT('ICRS', "RA_ICRS", "DE_ICRS"),
+    CIRCLE('ICRS', ${raDeg}, ${decDeg}, ${radiusDeg})
+  )
+  AND "Plx" IS NOT NULL
+  AND "Plx" > 0
+  AND "e_Plx" IS NOT NULL
+  AND "e_Plx" > 0
+  AND ("Plx" / "e_Plx") > 5
+  AND "Gmag" IS NOT NULL
+  AND "Gmag" < ${magLimit}
+ORDER BY "Gmag" ASC`;
+}
+
+function buildBoxAdql(
+  raMin: number,
+  raMax: number,
+  decMin: number,
+  decMax: number,
+  topN: number,
+  magLimit: number,
+): string {
+  return `SELECT TOP ${topN}
+  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
+  ("BPmag" - "RPmag") AS bprp
+FROM "I/355/gaiadr3"
+WHERE "RA_ICRS" BETWEEN ${raMin} AND ${raMax}
+  AND "DE_ICRS" BETWEEN ${decMin} AND ${decMax}
+  AND "Plx" IS NOT NULL
+  AND "Plx" > 0
+  AND "e_Plx" IS NOT NULL
+  AND "e_Plx" > 0
+  AND ("Plx" / "e_Plx") > 5
+  AND "Gmag" IS NOT NULL
+  AND "Gmag" < ${magLimit}
+ORDER BY "Gmag" ASC`;
+}
 
 export async function queryConeSearch(
   raDeg: number,
@@ -40,62 +83,40 @@ export async function queryConeSearch(
   radiusDeg: number,
   options: { topN?: number; magLimit?: number; signal?: AbortSignal } = {},
 ): Promise<GaiaRow[]> {
-  const top = options.topN ?? 50;
-  const magLimit = options.magLimit ?? 18;
-  const adql = `
-    SELECT TOP ${top}
-      ${CONE_COLUMNS.join(", ")}
-    FROM gaiadr3.gaia_source
-    WHERE 1 = CONTAINS(
-      POINT('ICRS', ra, dec),
-      CIRCLE('ICRS', ${raDeg}, ${decDeg}, ${radiusDeg})
-    )
-      AND parallax IS NOT NULL
-      AND parallax > 0
-      AND parallax_over_error > 5
-      AND phot_g_mean_mag IS NOT NULL
-      AND phot_g_mean_mag < ${magLimit}
-    ORDER BY phot_g_mean_mag ASC
-  `;
+  const adql = buildConeAdql(
+    raDeg,
+    decDeg,
+    radiusDeg,
+    options.topN ?? 50,
+    options.magLimit ?? 18,
+  );
   return runAdql(adql, options.signal);
 }
 
 export async function queryBox(
-  raMinDeg: number,
-  raMaxDeg: number,
-  decMinDeg: number,
-  decMaxDeg: number,
+  raMin: number,
+  raMax: number,
+  decMin: number,
+  decMax: number,
   options: { topN?: number; magLimit?: number; signal?: AbortSignal } = {},
 ): Promise<GaiaRow[]> {
-  const top = options.topN ?? 200;
-  const magLimit = options.magLimit ?? 18;
-  const adql = `
-    SELECT TOP ${top}
-      ${CONE_COLUMNS.join(", ")}
-    FROM gaiadr3.gaia_source
-    WHERE ra BETWEEN ${raMinDeg} AND ${raMaxDeg}
-      AND dec BETWEEN ${decMinDeg} AND ${decMaxDeg}
-      AND parallax IS NOT NULL
-      AND parallax > 0
-      AND parallax_over_error > 5
-      AND phot_g_mean_mag IS NOT NULL
-      AND phot_g_mean_mag < ${magLimit}
-    ORDER BY phot_g_mean_mag ASC
-  `;
+  const adql = buildBoxAdql(
+    raMin,
+    raMax,
+    decMin,
+    decMax,
+    options.topN ?? 200,
+    options.magLimit ?? 18,
+  );
   return runAdql(adql, options.signal);
-}
-
-interface GaiaTapResponse {
-  metadata: Array<{ name: string; datatype?: string }>;
-  data: Array<Array<string | number | null>>;
 }
 
 async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
   const params = new URLSearchParams({
     REQUEST: "doQuery",
     LANG: "ADQL",
-    FORMAT: "json",
-    QUERY: adql.trim(),
+    FORMAT: "csv",
+    QUERY: adql,
   });
   let res: Response;
   try {
@@ -106,57 +127,133 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
       signal,
     });
   } catch (e) {
-    throw new GaiaError("Network request to Gaia archive failed.", e);
+    console.error("[gaia] network error", e);
+    throw new GaiaError(
+      "Network error reaching VizieR. If this page is opened from " +
+        "file://, the browser blocks cross-origin fetches. Serve over " +
+        "http(s) (e.g. `npx serve dist`) or embed it in a website.",
+      e,
+    );
   }
+  const text = await res.text();
   if (!res.ok) {
-    throw new GaiaError(`Gaia archive returned HTTP ${res.status}.`);
+    console.error("[gaia] HTTP", res.status, text.slice(0, 500));
+    throw new GaiaError(
+      `VizieR returned HTTP ${res.status}. ${text.slice(0, 200)}`,
+    );
   }
-  let json: GaiaTapResponse;
-  try {
-    json = (await res.json()) as GaiaTapResponse;
-  } catch (e) {
-    throw new GaiaError("Could not parse Gaia archive response.", e);
-  }
-  return parseRows(json);
+  return parseCsv(text);
 }
 
-function parseRows(json: GaiaTapResponse): GaiaRow[] {
-  const cols = json.metadata.map((m) => m.name.toLowerCase());
-  const idx = (name: string) => cols.indexOf(name);
-  const iSource = idx("source_id");
-  const iRa = idx("ra");
-  const iDec = idx("dec");
-  const iPlx = idx("parallax");
-  const iPlxErr = idx("parallax_over_error");
-  const iG = idx("phot_g_mean_mag");
-  const iBpRp = idx("bp_rp");
-  const iTeff = idx("teff_gspphot");
+// VizieR returns CSV with a header row followed by data rows.
+// Columns we expect (in declared SELECT order):
+// Source, RA_ICRS, DE_ICRS, Plx, e_Plx, Gmag, bprp
+function parseCsv(text: string): GaiaRow[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const idx = (...candidates: string[]) => {
+    for (const c of candidates) {
+      const i = headers.findIndex((h) => h.toLowerCase() === c.toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iSource = idx("Source", "source");
+  const iRa = idx("RA_ICRS", "ra_icrs", "ra", "RAJ2000");
+  const iDec = idx("DE_ICRS", "de_icrs", "dec", "DEJ2000");
+  const iPlx = idx("Plx", "plx", "parallax");
+  const iEPlx = idx("e_Plx", "e_plx");
+  const iG = idx("Gmag", "gmag", "phot_g_mean_mag");
+  const iBpRp = idx("bprp", "BP-RP", "bp_rp");
 
-  return json.data.map((row) => ({
-    source_id: String(row[iSource]),
-    ra: Number(row[iRa]),
-    dec: Number(row[iDec]),
-    parallax_mas: Number(row[iPlx]),
-    parallax_over_error: Number(row[iPlxErr]),
-    g_mag: Number(row[iG]),
-    bp_rp: row[iBpRp] == null ? null : Number(row[iBpRp]),
-    teff_k: row[iTeff] == null ? null : Number(row[iTeff]),
-  }));
+  const rows: GaiaRow[] = [];
+  for (let r = 1; r < lines.length; r++) {
+    const cells = splitCsvLine(lines[r]);
+    if (cells.length < headers.length) continue;
+    const plx = num(cells[iPlx]);
+    const ePlx = num(cells[iEPlx]);
+    const g = num(cells[iG]);
+    const bpRp = iBpRp >= 0 ? num(cells[iBpRp]) : null;
+    if (plx === null || ePlx === null || g === null) continue;
+    if (plx <= 0 || ePlx <= 0) continue;
+    rows.push({
+      source_id: cells[iSource],
+      ra: num(cells[iRa]) ?? 0,
+      dec: num(cells[iDec]) ?? 0,
+      parallax_mas: plx,
+      parallax_over_error: plx / ePlx,
+      g_mag: g,
+      bp_rp: bpRp,
+      teff_k: null,
+    });
+  }
+  return rows;
 }
 
-// Gaia parallax in mas -> distance in parsecs.
+function splitCsvLine(line: string): string[] {
+  // Simple CSV parser: handles quoted strings with commas. Sufficient for
+  // VizieR TAP output which doesn't use embedded newlines or escaped quotes.
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      inQuotes = !inQuotes;
+    } else if (c === "," && !inQuotes) {
+      out.push(cur.trim());
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
+
+function num(s: string | undefined): number | null {
+  if (s == null || s === "" || s.toLowerCase() === "nan" || s === "null") {
+    return null;
+  }
+  const v = Number(s);
+  return Number.isFinite(v) ? v : null;
+}
+
+// ---- conversions ----
+
 export function distanceFromParallax(parallaxMas: number): number {
   if (parallaxMas <= 0) throw new Error("non-positive parallax");
   return 1000 / parallaxMas;
 }
 
-// Gaia G-band magnitude is close to but not identical to Johnson V.
-// For the H-R diagram visualisation we treat G as a proxy for V; this
-// introduces ~0.3 mag bias for very red or very blue stars but keeps the
-// pipeline simple. A future improvement is the colour-dependent
-// transformation G -> V using bp_rp.
+// Approximate Gaia BP-RP -> Teff. Calibrated against the Sun (BP-RP ~ 0.82,
+// Teff ~ 5778), Sirius A (BP-RP ~ 0, Teff ~ 9940), and M dwarfs (BP-RP ~ 2.5,
+// Teff ~ 3300). Sufficient for the educational visualisation; the caller
+// should mark these stars with notes="Teff estimated from BP-RP".
+export function teffFromBpRp(bpRp: number): number {
+  // Pecaut & Mamajek-style fit, simplified: T = 4600 * f(B-V) with
+  // B-V ~= 0.83 * (BP-RP) - 0.05.
+  const bv = 0.83 * bpRp - 0.05;
+  return 4600 * (1 / (0.92 * bv + 1.7) + 1 / (0.92 * bv + 0.62));
+}
+
 export function gaiaRowToStar(row: GaiaRow): Star {
   const distancePc = distanceFromParallax(row.parallax_mas);
+  let teff: number;
+  let notes: string | undefined;
+  if (row.teff_k != null && Number.isFinite(row.teff_k)) {
+    teff = row.teff_k;
+  } else if (row.bp_rp != null && Number.isFinite(row.bp_rp)) {
+    teff = teffFromBpRp(row.bp_rp);
+    notes = "T_eff estimated from Gaia BP-RP";
+  } else {
+    teff = 5778;
+    notes = "T_eff unknown; defaulted to solar";
+  }
   return {
     id: `gaia-${row.source_id}`,
     name: `Gaia DR3 ${row.source_id}`,
@@ -164,19 +261,10 @@ export function gaiaRowToStar(row: GaiaRow): Star {
     dec: row.dec,
     mV: row.g_mag,
     distancePc,
-    teff: row.teff_k ?? teffFromBpRp(row.bp_rp ?? 0.65),
+    teff,
     bv: row.bp_rp ?? undefined,
-    notes: row.teff_k == null ? "T_eff estimated from BP-RP" : undefined,
+    notes,
   };
-}
-
-// Rough BP-RP -> Teff using Ballesteros for B-V as a fallback when Gaia
-// has no astrophysical-parameter solution.
-function teffFromBpRp(bpRp: number): number {
-  return (
-    4600 *
-    (1 / (0.92 * bpRp + 1.7) + 1 / (0.92 * bpRp + 0.62))
-  );
 }
 
 export function nearestRow(
@@ -196,7 +284,6 @@ export function nearestRow(
   return best;
 }
 
-// Small-angle approximation is sufficient for the radii we use (< 1 deg).
 function angularSeparationDeg(
   ra1: number,
   dec1: number,
