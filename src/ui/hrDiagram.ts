@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import type { AxisConfig, PlottedStar } from "../types";
-import { bvFromTemp } from "../data/derive";
+import { blackbodyColor, bvFromTemp } from "../data/derive";
 
 export interface HRDiagramOptions {
   container: HTMLElement;
@@ -144,6 +144,7 @@ export class HRDiagram {
       .attr("r", 5)
       .attr("cx", (d) => xScale(xValue(d)))
       .attr("cy", (d) => yScale(yValue(d)))
+      .attr("fill", (d) => blackbodyColor(d.teff))
       .on("click", (_event, d) => this.onPointClick?.(d))
       .append("title")
       .text(

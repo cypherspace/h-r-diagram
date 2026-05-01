@@ -50,20 +50,27 @@ interface AladinNamespace {
   ) => AladinSource;
 }
 
+export interface CandidateStar extends Star {
+  // tag preserved on the marker so the sky-viewer click handler can hand
+  // it back to the app without a separate lookup.
+}
+
 export interface SkyViewerOptions {
   container: HTMLElement;
   initialTarget?: string;
   initialSurvey?: string;
   initialFov?: number;
-  onStarClick?: (star: Star) => void;
-  onSkyClick?: (raDeg: number, decDeg: number) => void;
+  onSampleClick?: (star: Star) => void;
+  onCandidateClick?: (star: CandidateStar) => void;
   onStatus?: (msg: string) => void;
 }
 
 export class SkyViewer {
   private aladin?: AladinInstance;
   private sampleCatalog?: AladinCatalog;
+  private candidateCatalog?: AladinCatalog;
   private samplesById = new Map<string, Star>();
+  private candidatesById = new Map<string, CandidateStar>();
   private opts: SkyViewerOptions;
   private ready: Promise<void>;
 
@@ -96,37 +103,35 @@ export class SkyViewer {
     });
 
     this.sampleCatalog = A.catalog({
-      name: "Sample stars",
+      name: "Reference stars",
       sourceSize: 14,
       color: "#ffd166",
       shape: "circle",
     });
+    this.candidateCatalog = A.catalog({
+      name: "Search results",
+      sourceSize: 10,
+      color: "#6cc4ff",
+      shape: "plus",
+    });
     this.aladin.addCatalog(this.sampleCatalog);
+    this.aladin.addCatalog(this.candidateCatalog);
 
-    let lastObjectClickAt = 0;
     this.aladin.on("objectClicked", (...args: unknown[]) => {
       const obj = args[0] as AladinSource | null;
-      lastObjectClickAt = Date.now();
       if (!obj) return;
       const id = obj.data?.id;
-      if (typeof id === "string") {
-        const star = this.samplesById.get(id);
-        if (star) this.opts.onStarClick?.(star);
+      if (typeof id !== "string") return;
+      const candidate = this.candidatesById.get(id);
+      if (candidate) {
+        this.opts.onCandidateClick?.(candidate);
+        return;
       }
+      const sample = this.samplesById.get(id);
+      if (sample) this.opts.onSampleClick?.(sample);
     });
 
-    this.aladin.on("click", (...args: unknown[]) => {
-      // Aladin fires `click` after `objectClicked` for catalog hits; debounce.
-      if (Date.now() - lastObjectClickAt < 300) return;
-      const evt = args[0] as { ra?: number; dec?: number } | undefined;
-      const ra = evt?.ra;
-      const dec = evt?.dec;
-      if (typeof ra === "number" && typeof dec === "number") {
-        this.opts.onSkyClick?.(ra, dec);
-      }
-    });
-
-    this.opts.onStatus?.("Ready. Click anywhere to query Gaia.");
+    this.opts.onStatus?.("Ready. Pan + zoom to find a region, then Search.");
   }
 
   async getCenter(): Promise<[number, number] | null> {
@@ -153,6 +158,37 @@ export class SkyViewer {
     });
     this.sampleCatalog.removeAll();
     this.sampleCatalog.addSources(sources);
+  }
+
+  async setCandidates(candidates: CandidateStar[]): Promise<void> {
+    await this.ready;
+    if (!this.candidateCatalog || !window.A) return;
+    this.candidatesById.clear();
+    const sources = candidates.map((s) => {
+      this.candidatesById.set(s.id, s);
+      return window.A!.source(s.ra, s.dec, {
+        id: s.id,
+        name: s.name,
+      });
+    });
+    this.candidateCatalog.removeAll();
+    if (sources.length > 0) this.candidateCatalog.addSources(sources);
+  }
+
+  removeCandidate(id: string): void {
+    this.candidatesById.delete(id);
+    // Aladin's catalog doesn't expose a "remove one source" call in v3,
+    // so we rebuild the catalog from the remaining candidates.
+    void this.setCandidates(Array.from(this.candidatesById.values()));
+  }
+
+  clearCandidates(): void {
+    this.candidatesById.clear();
+    this.candidateCatalog?.removeAll();
+  }
+
+  getCandidates(): CandidateStar[] {
+    return Array.from(this.candidatesById.values());
   }
 
   async goto(target: string): Promise<void> {

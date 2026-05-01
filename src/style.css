@@ -159,35 +159,48 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
 #diagram .axis text { fill: var(--muted); font-size: 11px; }
 #diagram .axis-label { fill: var(--fg); font-size: 12px; }
 #diagram .gridline { stroke: var(--grid); stroke-dasharray: 2,2; opacity: 0.4; }
-#diagram circle.point { fill: var(--accent-2); stroke: #fff; stroke-width: 0.5; cursor: pointer; }
-#diagram circle.point.selected { fill: var(--accent); stroke-width: 2; }
+/* Point fill is set per-star via the black-body colour function;
+   stroke styling here keeps points legible against the dark panel and
+   highlights the currently selected one. */
+#diagram circle.point {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 0.7;
+  cursor: pointer;
+}
+#diagram circle.point.selected {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
 
 /* info panel */
 #data-panel dl { margin: 0; font-size: 0.85rem; }
 #data-panel dt { color: var(--muted); margin-top: 0.4rem; }
 #data-panel dd { margin: 0; font-variant-numeric: tabular-nums; }
-/* walkthrough */
-.tour-overlay {
+/* walkthrough — backdrop dims the page, tooltip floats above with its
+   own stacking context. Highlight is purely visual (outline + glow)
+   to avoid stacking-context fights. */
+.tour-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 16, 32, 0.55);
-  z-index: 9999;
+  background: rgba(11, 16, 32, 0.6);
+  z-index: 9990;
   pointer-events: none;
 }
 .tour-tooltip {
   position: fixed;
-  pointer-events: auto;
+  z-index: 10000;
   background: var(--panel);
   color: var(--fg);
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  max-width: 320px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
-  font-size: 0.9rem;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  width: min(360px, calc(100vw - 32px));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  font-size: 0.92rem;
+  pointer-events: auto;
 }
-.tour-tooltip h3 { margin: 0 0 0.4rem; color: var(--accent); font-size: 1rem; }
-.tour-tooltip p { margin: 0 0 0.6rem; line-height: 1.4; }
+.tour-tooltip h3 { margin: 0 0 0.45rem; color: var(--accent); font-size: 1.05rem; }
+.tour-tooltip p { margin: 0 0 0.85rem; line-height: 1.45; }
 .tour-actions {
   display: flex;
   align-items: center;
@@ -199,19 +212,28 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   color: var(--fg);
   border: 1px solid var(--grid);
   border-radius: 4px;
-  padding: 0.25rem 0.7rem;
-  font-size: 0.85rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.9rem;
   cursor: pointer;
+  font-family: inherit;
 }
 .tour-actions button:hover { background: #243057; }
-.tour-actions button.tour-next { border-color: var(--accent); }
-.tour-progress { color: var(--muted); font-size: 0.8rem; }
+.tour-actions button.tour-next {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.tour-actions button.tour-next:hover {
+  background: #ffe18a;
+}
+.tour-progress { color: var(--muted); font-size: 0.85rem; }
 .tour-highlighted {
-  position: relative;
-  z-index: 10000;
-  box-shadow: 0 0 0 3px var(--accent), 0 0 24px rgba(255, 209, 102, 0.4);
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
   border-radius: 6px;
-  pointer-events: auto;
+  box-shadow: 0 0 24px rgba(255, 209, 102, 0.45);
+  transition: outline-color 0.2s ease;
 }
 
 #data-panel img.thumb {

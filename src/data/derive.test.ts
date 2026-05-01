@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   M_V_SUN,
   absoluteMagnitude,
+  blackbodyRgb,
   bvFromTemp,
   luminositySolar,
   plotStar,
@@ -53,6 +54,38 @@ describe("tempFromBV / bvFromTemp", () => {
     for (const bv of [-0.2, 0, 0.5, 1.0, 1.5]) {
       const t = tempFromBV(bv);
       expect(bvFromTemp(t)).toBeCloseTo(bv, 2);
+    }
+  });
+});
+
+describe("blackbodyRgb", () => {
+  it("returns a deep red/orange for cool stars (~3000 K)", () => {
+    const [r, g, b] = blackbodyRgb(3000);
+    expect(r).toBeGreaterThan(g);
+    expect(g).toBeGreaterThan(b);
+    expect(r).toBe(255);
+  });
+
+  it("returns a roughly white-yellow for sun-like stars (~5800 K)", () => {
+    const [r, g, b] = blackbodyRgb(5800);
+    expect(r).toBe(255);
+    expect(g).toBeGreaterThan(200);
+    expect(b).toBeGreaterThan(180);
+    expect(b).toBeLessThan(r);
+  });
+
+  it("returns a blue-white for hot stars (~25000 K)", () => {
+    const [r, , b] = blackbodyRgb(25000);
+    expect(b).toBe(255);
+    expect(b).toBeGreaterThan(r);
+  });
+
+  it("clamps very low and very high temperatures", () => {
+    const cold = blackbodyRgb(500);
+    const hot = blackbodyRgb(100000);
+    for (const v of [...cold, ...hot]) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(255);
     }
   });
 });

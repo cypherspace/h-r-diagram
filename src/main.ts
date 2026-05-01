@@ -4,13 +4,12 @@ import { plotStar } from "./data/derive";
 import {
   GaiaError,
   gaiaRowToStar,
-  nearestRow,
   queryConeSearch,
 } from "./data/gaia";
 import { HRDiagram } from "./ui/hrDiagram";
 import { DataPanel } from "./ui/dataPanel";
 import { Controls } from "./ui/controls";
-import { SkyViewer } from "./ui/skyViewer";
+import { SkyViewer, type CandidateStar } from "./ui/skyViewer";
 import { Walkthrough } from "./ui/walkthrough";
 import {
   deleteDiagram,
@@ -19,7 +18,6 @@ import {
 } from "./store/diagrams";
 import type { AxisConfig, PlottedStar, Star } from "./types";
 
-const CONE_RADIUS_DEG = 0.05; // ~3 arcmin
 const MAX_PLOTTED = 500;
 
 const defaultAxes: AxisConfig = {
@@ -78,8 +76,8 @@ class App {
       initialTarget: "Pleiades",
       initialSurvey: "P/DSS2/color",
       initialFov: 60,
-      onStarClick: (star) => this.toggleStar(star),
-      onSkyClick: (ra, dec) => void this.queryGaiaAt(ra, dec),
+      onSampleClick: (star) => this.toggleStar(star),
+      onCandidateClick: (star) => this.commitCandidate(star),
       onStatus: (msg) => {
         this.skyStatusEl.textContent = msg;
       },
@@ -106,7 +104,9 @@ class App {
     const gotoInput = mustGet("goto-input") as HTMLInputElement;
     const gotoBtn = mustGet("goto-btn") as HTMLButtonElement;
     const surveySelect = mustGet("survey-select") as HTMLSelectElement;
-    const addRegionBtn = mustGet("add-region-btn") as HTMLButtonElement;
+    const searchBtn = mustGet("search-btn") as HTMLButtonElement;
+    const addAllBtn = mustGet("add-all-btn") as HTMLButtonElement;
+    const clearCandidatesBtn = mustGet("clear-candidates-btn") as HTMLButtonElement;
     const regionLimit = mustGet("region-limit") as HTMLInputElement;
 
     const fire = () => {
@@ -120,9 +120,14 @@ class App {
     surveySelect.addEventListener("change", () => {
       void this.skyViewer.setSurvey(surveySelect.value);
     });
-    addRegionBtn.addEventListener("click", () => {
+    searchBtn.addEventListener("click", () => {
       const limit = clamp(parseInt(regionLimit.value, 10) || 50, 1, 500);
-      void this.addVisibleRegion(limit);
+      void this.searchVisibleRegion(limit);
+    });
+    addAllBtn.addEventListener("click", () => this.addAllCandidates());
+    clearCandidatesBtn.addEventListener("click", () => {
+      this.skyViewer.clearCandidates();
+      this.skyStatusEl.textContent = "Search results cleared.";
     });
   }
 
@@ -187,7 +192,7 @@ class App {
     this.refresh();
   }
 
-  private async addVisibleRegion(limit: number): Promise<void> {
+  private async searchVisibleRegion(limit: number): Promise<void> {
     const center = await this.skyViewer.getCenter();
     const fov = await this.skyViewer.getFov();
     if (!center || !fov) {
@@ -195,32 +200,30 @@ class App {
       return;
     }
     const [ra, dec] = center;
-    // Use the smaller FOV axis as the cone radius, capped so the query stays bounded.
+    // Use the larger FOV axis / 2 so the cone covers the diagonals; cap to
+    // keep the query bounded.
     const radius = Math.min(Math.max(fov[0], fov[1]) / 2, 1.5);
     this.inflightGaia?.abort();
     const ctrl = new AbortController();
     this.inflightGaia = ctrl;
-    this.skyStatusEl.textContent = `Querying Gaia (radius ${radius.toFixed(2)}°, top ${limit})…`;
+    this.skyStatusEl.textContent = `Searching Gaia (radius ${radius.toFixed(2)}°, top ${limit})…`;
     try {
       const rows = await queryConeSearch(ra, dec, radius, {
         topN: limit,
         signal: ctrl.signal,
       });
       if (ctrl.signal.aborted) return;
-      let added = 0;
+      // Drop rows already plotted so the user only sees new candidates.
+      const candidates: CandidateStar[] = [];
       for (const row of rows) {
-        if (this.plotted.size >= MAX_PLOTTED) break;
         const star = gaiaRowToStar(row);
-        if (!this.plotted.has(star.id)) {
-          this.plotted.set(star.id, plotStar(star));
-          added++;
-        }
+        if (!this.plotted.has(star.id)) candidates.push(star);
       }
-      this.refresh();
+      await this.skyViewer.setCandidates(candidates);
       this.skyStatusEl.textContent =
-        added > 0
-          ? `Added ${added} Gaia stars (${rows.length} returned).`
-          : `No new stars added (${rows.length} returned).`;
+        candidates.length > 0
+          ? `Found ${candidates.length} candidate(s). Click a marker to add one, or "Add all".`
+          : "No new Gaia stars in that region.";
     } catch (e) {
       if (ctrl.signal.aborted) return;
       const msg =
@@ -229,51 +232,43 @@ class App {
           : e instanceof Error
             ? e.message
             : String(e);
-      this.skyStatusEl.textContent = `Gaia query failed: ${msg}`;
+      this.skyStatusEl.textContent = `Gaia search failed: ${msg}`;
     } finally {
       if (this.inflightGaia === ctrl) this.inflightGaia = null;
     }
   }
 
-  private async queryGaiaAt(ra: number, dec: number): Promise<void> {
+  private commitCandidate(star: CandidateStar): void {
     if (this.plotted.size >= MAX_PLOTTED) {
       this.skyStatusEl.textContent = `Diagram already has ${MAX_PLOTTED} stars.`;
       return;
     }
-    this.inflightGaia?.abort();
-    const ctrl = new AbortController();
-    this.inflightGaia = ctrl;
-    this.skyStatusEl.textContent = `Querying Gaia at ${ra.toFixed(2)}°, ${dec.toFixed(2)}°…`;
-    try {
-      const rows = await queryConeSearch(ra, dec, CONE_RADIUS_DEG, {
-        topN: 50,
-        signal: ctrl.signal,
-      });
-      if (ctrl.signal.aborted) return;
-      if (rows.length === 0) {
-        this.skyStatusEl.textContent =
-          "No Gaia stars with valid parallax in that region.";
-        return;
-      }
-      const best = nearestRow(rows, ra, dec);
-      if (!best) return;
-      const star = gaiaRowToStar(best);
+    if (!this.plotted.has(star.id)) {
       this.plotted.set(star.id, plotStar(star));
-      this.select(star.id);
-      this.refresh();
-      this.skyStatusEl.textContent = `Added ${star.name} (G=${best.g_mag.toFixed(2)}, π=${best.parallax_mas.toFixed(2)} mas).`;
-    } catch (e) {
-      if (ctrl.signal.aborted) return;
-      const msg =
-        e instanceof GaiaError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      this.skyStatusEl.textContent = `Gaia query failed: ${msg}`;
-    } finally {
-      if (this.inflightGaia === ctrl) this.inflightGaia = null;
     }
+    this.skyViewer.removeCandidate(star.id);
+    this.select(star.id);
+    this.refresh();
+    this.skyStatusEl.textContent = `Added ${star.name}.`;
+  }
+
+  private addAllCandidates(): void {
+    const candidates = this.skyViewer.getCandidates();
+    if (candidates.length === 0) {
+      this.skyStatusEl.textContent = "No search results to add. Hit Search first.";
+      return;
+    }
+    let added = 0;
+    for (const star of candidates) {
+      if (this.plotted.size >= MAX_PLOTTED) break;
+      if (!this.plotted.has(star.id)) {
+        this.plotted.set(star.id, plotStar(star));
+        added++;
+      }
+    }
+    this.skyViewer.clearCandidates();
+    this.refresh();
+    this.skyStatusEl.textContent = `Added ${added} stars from search results.`;
   }
 
   private save(name: string): void {
