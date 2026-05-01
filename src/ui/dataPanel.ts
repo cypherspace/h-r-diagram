@@ -77,6 +77,17 @@ export class DataPanel {
     );
     this.container.appendChild(secondary);
 
+    // Wikipedia link (only for named/curated stars).
+    if (star.wikipedia) {
+      const link = document.createElement("a");
+      link.className = "wikipedia-link";
+      link.href = `https://en.wikipedia.org/wiki/${star.wikipedia}`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Read about this star on Wikipedia →";
+      this.container.appendChild(link);
+    }
+
     // Hidden details.
     const details = document.createElement("details");
     details.className = "extra-details";

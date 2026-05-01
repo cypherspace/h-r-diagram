@@ -127,13 +127,23 @@ export class SkyViewer {
     });
 
     // Notify the host whenever Aladin's full-screen mode changes so the
-    // surrounding UI can collapse / restore.
+    // surrounding UI can collapse / restore. Aladin Lite v3 uses a CSS
+    // fallback in some environments (e.g. iframes without an explicit
+    // `allow="fullscreen"`), where the native `fullscreenchange` event
+    // never fires. Subscribe to Aladin's own event AND the native one
+    // so either path triggers the body class.
+    const setFullscreen = (on: boolean) => {
+      document.body.classList.toggle("aladin-fullscreen", on);
+    };
+    this.aladin.on("fullScreenToggled", (...args: unknown[]) => {
+      setFullscreen(Boolean(args[0]));
+    });
     document.addEventListener("fullscreenchange", () => {
       const fs = document.fullscreenElement;
       const inAladin =
         !!fs &&
         (fs === this.opts.container || this.opts.container.contains(fs));
-      document.body.classList.toggle("aladin-fullscreen", inAladin);
+      setFullscreen(inAladin);
     });
 
     this.opts.onStatus?.(

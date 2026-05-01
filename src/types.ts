@@ -9,6 +9,9 @@ export interface Star {
   bv?: number;
   spectralType?: string;
   notes?: string;
+  // Page slug on en.wikipedia.org. Set for named/curated stars; left
+  // undefined for Gaia-discovered stars where there's no obvious page.
+  wikipedia?: string;
 }
 
 export interface PlottedStar extends Star {

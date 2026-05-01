@@ -8,22 +8,29 @@ export interface ControlsCallbacks {
   onSave: (name: string) => void;
   onLoad: (name: string) => void;
   onDelete: (name: string) => void;
+  onDotSizeChange: (size: number) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 }
 
 export class Controls {
   private container: HTMLElement;
   private cb: ControlsCallbacks;
   private axes: AxisConfig;
+  private dotSize: number;
   private savedSelect!: HTMLSelectElement;
 
   constructor(
     container: HTMLElement,
     initialAxes: AxisConfig,
+    initialDotSize: number,
     cb: ControlsCallbacks,
   ) {
     this.container = container;
     this.cb = cb;
     this.axes = initialAxes;
+    this.dotSize = initialDotSize;
     this.render();
   }
 
@@ -116,6 +123,35 @@ export class Controls {
       ),
     );
 
+    this.container.appendChild(
+      this.makeSelect(
+        "Dot size",
+        [
+          ["2", "tiny"],
+          ["3", "small"],
+          ["5", "medium"],
+          ["7", "large"],
+        ],
+        String(this.dotSize),
+        (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n)) {
+            this.dotSize = n;
+            this.cb.onDotSizeChange(n);
+          }
+        },
+      ),
+    );
+
+    const zoomGroup = document.createElement("span");
+    zoomGroup.className = "zoom-group";
+    zoomGroup.append(
+      button("−", () => this.cb.onZoomOut(), "Zoom out"),
+      button("+", () => this.cb.onZoomIn(), "Zoom in"),
+      button("Reset zoom", () => this.cb.onZoomReset()),
+    );
+    this.container.appendChild(zoomGroup);
+
     const clearAll = button("Clear all", () => this.cb.onClearAll());
     this.container.appendChild(clearAll);
 
@@ -193,9 +229,14 @@ export class Controls {
   }
 }
 
-function button(label: string, onClick: () => void): HTMLButtonElement {
+function button(
+  label: string,
+  onClick: () => void,
+  title?: string,
+): HTMLButtonElement {
   const b = document.createElement("button");
   b.textContent = label;
+  if (title) b.title = title;
   b.addEventListener("click", onClick);
   return b;
 }

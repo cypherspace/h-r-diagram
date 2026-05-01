@@ -5,6 +5,7 @@ import { blackbodyColor, bvFromTemp } from "../data/derive";
 export interface HRDiagramOptions {
   container: HTMLElement;
   axes: AxisConfig;
+  dotSize?: number;
   onPointClick?: (star: PlottedStar) => void;
 }
 
@@ -17,17 +18,38 @@ export class HRDiagram {
   private svg!: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private root!: d3.Selection<SVGGElement, unknown, null, undefined>;
   private resizeObserver: ResizeObserver;
+  private zoomBehaviour: d3.ZoomBehavior<SVGSVGElement, unknown>;
+  private currentTransform: d3.ZoomTransform = d3.zoomIdentity;
+  private dotSize: number;
+  private clipId: string;
 
   constructor(opts: HRDiagramOptions) {
     this.container = opts.container;
     this.axes = opts.axes;
     this.onPointClick = opts.onPointClick;
+    this.dotSize = opts.dotSize ?? 5;
+    this.clipId = `hrd-clip-${Math.floor(Math.random() * 1e9).toString(36)}`;
 
     this.svg = d3
       .select(this.container)
       .append("svg")
       .attr("preserveAspectRatio", "none");
     this.root = this.svg.append("g");
+
+    this.zoomBehaviour = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 100])
+      .filter((event) => {
+        // Allow wheel + drag, but ignore right-click drags so the user can
+        // still right-click to copy / inspect.
+        if (event.type === "mousedown" && event.button !== 0) return false;
+        return true;
+      })
+      .on("zoom", (event) => {
+        this.currentTransform = event.transform;
+        this.render();
+      });
+    this.svg.call(this.zoomBehaviour);
 
     this.resizeObserver = new ResizeObserver(() => this.render());
     this.resizeObserver.observe(this.container);
@@ -50,6 +72,34 @@ export class HRDiagram {
       .classed("selected", (d) => d.id === id);
   }
 
+  setDotSize(size: number): void {
+    this.dotSize = size;
+    this.root
+      .selectAll<SVGCircleElement, PlottedStar>("circle.point")
+      .attr("r", size);
+  }
+
+  resetZoom(): void {
+    this.svg
+      .transition()
+      .duration(300)
+      .call(this.zoomBehaviour.transform, d3.zoomIdentity);
+  }
+
+  zoomIn(): void {
+    this.svg
+      .transition()
+      .duration(200)
+      .call(this.zoomBehaviour.scaleBy, 1.5);
+  }
+
+  zoomOut(): void {
+    this.svg
+      .transition()
+      .duration(200)
+      .call(this.zoomBehaviour.scaleBy, 1 / 1.5);
+  }
+
   destroy(): void {
     this.resizeObserver.disconnect();
     this.svg.remove();
@@ -66,17 +116,43 @@ export class HRDiagram {
     this.svg.attr("viewBox", `0 0 ${width} ${height}`);
     this.root.attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const xScale = this.makeXScale(innerW);
-    const yScale = this.makeYScale(innerH);
+    const baseX = this.makeXScale(innerW);
+    const baseY = this.makeYScale(innerH);
+    // d3-zoom rescaleX/Y works on linear, log, and pow scales.
+    const xScale = this.currentTransform.rescaleX(baseX);
+    const yScale = this.currentTransform.rescaleY(baseY);
     const xValue = this.xValueFn();
     const yValue = this.yValueFn();
 
     this.root.selectAll("*").remove();
 
-    // gridlines
+    // Clip path so panned/zoomed points don't escape the plot area.
+    const defs = this.root.append("defs");
+    defs
+      .append("clipPath")
+      .attr("id", this.clipId)
+      .append("rect")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", innerW)
+      .attr("height", innerH);
+
+    // Background rect captures zoom-drag gestures over empty plot area.
     this.root
+      .append("rect")
+      .attr("class", "plot-bg")
+      .attr("width", innerW)
+      .attr("height", innerH)
+      .attr("fill", "transparent")
+      .style("pointer-events", "all");
+
+    // Gridlines.
+    const gridG = this.root
       .append("g")
       .attr("class", "grid")
+      .attr("clip-path", `url(#${this.clipId})`);
+
+    gridG
       .selectAll("line.gridline-x")
       .data(xScale.ticks(8))
       .join("line")
@@ -86,8 +162,7 @@ export class HRDiagram {
       .attr("y1", 0)
       .attr("y2", innerH);
 
-    this.root
-      .append("g")
+    gridG
       .selectAll("line.gridline-y")
       .data(yScale.ticks(8))
       .join("line")
@@ -97,7 +172,7 @@ export class HRDiagram {
       .attr("y1", (d) => yScale(d as number))
       .attr("y2", (d) => yScale(d as number));
 
-    // axes
+    // Axes.
     const xAxis = this.makeXAxis(xScale);
     const yAxis = this.makeYAxis(yScale);
 
@@ -109,7 +184,7 @@ export class HRDiagram {
 
     this.root.append("g").attr("class", "axis y-axis").call(yAxis);
 
-    // axis labels
+    // Axis labels.
     this.root
       .append("text")
       .attr("class", "axis-label")
@@ -125,9 +200,7 @@ export class HRDiagram {
       .attr("text-anchor", "middle")
       .text(this.yLabel());
 
-    // points — skip stars whose plotted coordinates aren't finite numbers
-    // (e.g. NaN luminosity from a corrupt input). d3 scales handle
-    // out-of-range values via .clamp(true), but NaN still propagates.
+    // Points — skip stars whose plotted coordinates aren't finite numbers.
     const plottable = this.stars.filter((d) => {
       const x = xValue(d);
       const y = yValue(d);
@@ -136,12 +209,13 @@ export class HRDiagram {
 
     this.root
       .append("g")
+      .attr("clip-path", `url(#${this.clipId})`)
       .selectAll<SVGCircleElement, PlottedStar>("circle.point")
       .data(plottable, (d) => d.id)
       .join("circle")
       .attr("class", "point")
       .classed("selected", (d) => d.id === this.selectedId)
-      .attr("r", 5)
+      .attr("r", this.dotSize)
       .attr("cx", (d) => xScale(xValue(d)))
       .attr("cy", (d) => yScale(yValue(d)))
       .attr("fill", (d) => blackbodyColor(d.teff))
@@ -165,15 +239,13 @@ export class HRDiagram {
     return (d) => d.absMag;
   }
 
-  // Fixed axis bounds. Real H-R diagrams span ~10 decades in luminosity
-  // and ~1 decade in temperature; pinning the domain keeps the axes
-  // legible regardless of which stars are loaded and avoids breakage from
-  // outlier Gaia rows with tiny parallaxes (huge derived luminosities).
+  // Fixed axis bounds. The user pans/zooms within these via d3-zoom; the
+  // base domain stays constant so axes remain physically meaningful.
   private static readonly BOUNDS = {
-    teff: [1500, 40000] as const,        // hot ↑ (left in plot)
-    bv: [-0.5, 2.5] as const,            // bluer ↑ (left in plot)
-    luminosity: [1e-4, 1e6] as const,    // L / L☉ (log)
-    absMag: [-12, 18] as const,          // M_V; brighter (more negative) ↑
+    teff: [1500, 40000] as const,
+    bv: [-0.5, 2.5] as const,
+    luminosity: [1e-4, 1e6] as const,
+    absMag: [-12, 18] as const,
   };
 
   private makeXScale(innerW: number): d3.ScaleContinuousNumeric<number, number> {
@@ -181,12 +253,12 @@ export class HRDiagram {
       const [lo, hi] = HRDiagram.BOUNDS.teff;
       const scale =
         this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-      return scale.domain([hi, lo]).range([0, innerW]).clamp(true);
+      return scale.domain([hi, lo]).range([0, innerW]);
     }
     const [lo, hi] = HRDiagram.BOUNDS.bv;
     const scale =
       this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-    return scale.domain([lo, hi]).range([0, innerW]).clamp(true);
+    return scale.domain([lo, hi]).range([0, innerW]);
   }
 
   private makeYScale(innerH: number): d3.ScaleContinuousNumeric<number, number> {
@@ -194,12 +266,12 @@ export class HRDiagram {
       const [lo, hi] = HRDiagram.BOUNDS.luminosity;
       const scale =
         this.axes.yScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-      return scale.domain([lo, hi]).range([innerH, 0]).clamp(true);
+      return scale.domain([lo, hi]).range([innerH, 0]);
     }
     const [lo, hi] = HRDiagram.BOUNDS.absMag;
     const scale =
       this.axes.yScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-    return scale.domain([hi, lo]).range([innerH, 0]).clamp(true);
+    return scale.domain([hi, lo]).range([innerH, 0]);
   }
 
   private makeXAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
@@ -236,4 +308,3 @@ export class HRDiagram {
     return "Absolute magnitude — brighter ↑";
   }
 }
-

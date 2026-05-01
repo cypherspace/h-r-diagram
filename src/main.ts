@@ -18,7 +18,8 @@ import {
 } from "./store/diagrams";
 import type { AxisConfig, PlottedStar, Star } from "./types";
 
-const MAX_PLOTTED = 500;
+const MAX_PLOTTED = 5000;
+const DEFAULT_DOT_SIZE = 5;
 
 const defaultAxes: AxisConfig = {
   yMode: "luminosity",
@@ -29,6 +30,7 @@ const defaultAxes: AxisConfig = {
 
 class App {
   private axes: AxisConfig = defaultAxes;
+  private dotSize = DEFAULT_DOT_SIZE;
   private plotted = new Map<string, PlottedStar>();
   private selectedId: string | null = null;
   private diagram: HRDiagram;
@@ -53,13 +55,14 @@ class App {
     this.diagram = new HRDiagram({
       container: diagramEl,
       axes: this.axes,
+      dotSize: this.dotSize,
       onPointClick: (s) => {
         this.select(s.id);
         this.skyViewer.gotoRaDec(s.ra, s.dec);
       },
     });
 
-    this.controls = new Controls(controlsEl, this.axes, {
+    this.controls = new Controls(controlsEl, this.axes, this.dotSize, {
       onAxesChange: (axes) => {
         this.axes = axes;
         this.diagram.setAxes(axes);
@@ -69,6 +72,13 @@ class App {
       onSave: (name) => this.save(name),
       onLoad: (name) => this.load(name),
       onDelete: (name) => deleteDiagram(name),
+      onDotSizeChange: (n) => {
+        this.dotSize = n;
+        this.diagram.setDotSize(n);
+      },
+      onZoomIn: () => this.diagram.zoomIn(),
+      onZoomOut: () => this.diagram.zoomOut(),
+      onZoomReset: () => this.diagram.resetZoom(),
     });
 
     this.skyViewer = new SkyViewer({
