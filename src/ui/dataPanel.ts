@@ -28,7 +28,10 @@ export class DataPanel {
     ];
     if (star.notes) rows.push(["Notes", star.notes]);
 
+    const thumb = thumbnailUrl(star.ra, star.dec);
+
     this.container.innerHTML =
+      `<img class="thumb" alt="DSS2 cutout of ${escape(star.name)}" src="${escape(thumb)}" loading="lazy" />` +
       "<dl>" +
       rows
         .map(
@@ -38,6 +41,22 @@ export class DataPanel {
         .join("") +
       "</dl>";
   }
+}
+
+// hips2fits cutout service from CDS Strasbourg. Returns a JPG of the
+// requested HiPS at the given RA/Dec/FoV.
+function thumbnailUrl(ra: number, dec: number): string {
+  const params = new URLSearchParams({
+    hips: "CDS/P/DSS2/color",
+    ra: ra.toFixed(6),
+    dec: dec.toFixed(6),
+    fov: "0.1",
+    width: "180",
+    height: "180",
+    projection: "TAN",
+    format: "jpg",
+  });
+  return `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?${params.toString()}`;
 }
 
 function formatDistance(pc: number): string {

@@ -11,6 +11,7 @@ import { HRDiagram } from "./ui/hrDiagram";
 import { DataPanel } from "./ui/dataPanel";
 import { Controls } from "./ui/controls";
 import { SkyViewer } from "./ui/skyViewer";
+import { Walkthrough } from "./ui/walkthrough";
 import {
   deleteDiagram,
   loadDiagram,
@@ -88,12 +89,25 @@ class App {
     this.wireSkyControls();
     this.renderCatalog();
     this.refresh();
+
+    const tourBtn = document.getElementById("tour-btn");
+    tourBtn?.addEventListener("click", () => {
+      Walkthrough.reset();
+      new Walkthrough().start();
+    });
+
+    if (!Walkthrough.hasBeenSeen()) {
+      // Defer so the sky viewer container has rendered.
+      setTimeout(() => new Walkthrough().start(), 600);
+    }
   }
 
   private wireSkyControls(): void {
     const gotoInput = mustGet("goto-input") as HTMLInputElement;
     const gotoBtn = mustGet("goto-btn") as HTMLButtonElement;
     const surveySelect = mustGet("survey-select") as HTMLSelectElement;
+    const addRegionBtn = mustGet("add-region-btn") as HTMLButtonElement;
+    const regionLimit = mustGet("region-limit") as HTMLInputElement;
 
     const fire = () => {
       const target = gotoInput.value.trim();
@@ -105,6 +119,10 @@ class App {
     });
     surveySelect.addEventListener("change", () => {
       void this.skyViewer.setSurvey(surveySelect.value);
+    });
+    addRegionBtn.addEventListener("click", () => {
+      const limit = clamp(parseInt(regionLimit.value, 10) || 50, 1, 500);
+      void this.addVisibleRegion(limit);
     });
   }
 
@@ -167,6 +185,54 @@ class App {
     this.selectedId = null;
     this.dataPanel.showEmpty();
     this.refresh();
+  }
+
+  private async addVisibleRegion(limit: number): Promise<void> {
+    const center = await this.skyViewer.getCenter();
+    const fov = await this.skyViewer.getFov();
+    if (!center || !fov) {
+      this.skyStatusEl.textContent = "Sky viewer not ready.";
+      return;
+    }
+    const [ra, dec] = center;
+    // Use the smaller FOV axis as the cone radius, capped so the query stays bounded.
+    const radius = Math.min(Math.max(fov[0], fov[1]) / 2, 1.5);
+    this.inflightGaia?.abort();
+    const ctrl = new AbortController();
+    this.inflightGaia = ctrl;
+    this.skyStatusEl.textContent = `Querying Gaia (radius ${radius.toFixed(2)}°, top ${limit})…`;
+    try {
+      const rows = await queryConeSearch(ra, dec, radius, {
+        topN: limit,
+        signal: ctrl.signal,
+      });
+      if (ctrl.signal.aborted) return;
+      let added = 0;
+      for (const row of rows) {
+        if (this.plotted.size >= MAX_PLOTTED) break;
+        const star = gaiaRowToStar(row);
+        if (!this.plotted.has(star.id)) {
+          this.plotted.set(star.id, plotStar(star));
+          added++;
+        }
+      }
+      this.refresh();
+      this.skyStatusEl.textContent =
+        added > 0
+          ? `Added ${added} Gaia stars (${rows.length} returned).`
+          : `No new stars added (${rows.length} returned).`;
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      const msg =
+        e instanceof GaiaError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      this.skyStatusEl.textContent = `Gaia query failed: ${msg}`;
+    } finally {
+      if (this.inflightGaia === ctrl) this.inflightGaia = null;
+    }
   }
 
   private async queryGaiaAt(ra: number, dec: number): Promise<void> {
@@ -252,6 +318,10 @@ function mustGet(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`#${id} not found`);
   return el;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
 }
 
 new App();

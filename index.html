@@ -17,11 +17,16 @@
   <body>
     <div id="app">
       <header>
-        <h1>Interactive H-R Diagram</h1>
-        <p class="subtitle">
-          Click stars on the sky, watch them appear on the
-          Hertzsprung&ndash;Russell diagram.
-        </p>
+        <div>
+          <h1>Interactive H-R Diagram</h1>
+          <p class="subtitle">
+            Click stars on the sky, watch them appear on the
+            Hertzsprung&ndash;Russell diagram.
+          </p>
+        </div>
+        <button id="tour-btn" type="button" title="Replay the tour">
+          ? Tour
+        </button>
       </header>
 
       <main>
@@ -40,6 +45,13 @@
                 <option value="P/SDSS9/color">SDSS9 color</option>
                 <option value="P/2MASS/color">2MASS</option>
               </select>
+            </label>
+            <button id="add-region-btn" title="Query Gaia for the centre of the viewport">
+              Add visible region
+            </button>
+            <label>
+              Limit
+              <input id="region-limit" type="number" min="1" max="500" value="50" />
             </label>
             <span class="hint" id="sky-status">Loading sky&hellip;</span>
           </div>
