@@ -77,9 +77,13 @@ export class DataPanel {
     );
     this.container.appendChild(secondary);
 
-    // External-info links: Wikipedia for named stars, SIMBAD for Gaia
-    // stars. SIMBAD aggregates cross-identifications, papers and
-    // photometry for every Gaia DR3 source.
+    // External-info links: Wikipedia for named stars (when we have a
+    // page slug), plus ESA Sky as a visual "explore this region of the
+    // sky" tool for any star. ESA Sky is run by the European Space Agency
+    // and shows multi-wavelength imagery + the Gaia DR3 catalogue, so
+    // students can hover any marker to see the same star they're looking
+    // at here. Useful in particular for Gaia-discovered stars where a
+    // Wikipedia page doesn't exist.
     const links = document.createElement("div");
     links.className = "external-links";
     if (star.wikipedia) {
@@ -90,18 +94,10 @@ export class DataPanel {
         ),
       );
     }
-    if (star.id.startsWith("gaia-")) {
-      const sourceId = star.id.slice("gaia-".length);
-      links.appendChild(
-        externalLink(
-          `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=Gaia+DR3+${sourceId}`,
-          "Look up this star on SIMBAD →",
-        ),
-      );
-    }
-    if (links.childElementCount > 0) {
-      this.container.appendChild(links);
-    }
+    links.appendChild(
+      externalLink(esaSkyUrl(star.ra, star.dec), "Explore this star on ESA Sky →"),
+    );
+    this.container.appendChild(links);
 
     // Hidden details.
     const details = document.createElement("details");
@@ -138,6 +134,18 @@ function externalLink(href: string, text: string): HTMLAnchorElement {
   a.rel = "noopener noreferrer";
   a.textContent = text;
   return a;
+}
+
+function esaSkyUrl(ra: number, dec: number): string {
+  const params = new URLSearchParams({
+    target: `${ra.toFixed(5)} ${dec.toFixed(5)}`,
+    hips: "DSS2 color",
+    fov: "0.1",
+    cooframe: "J2000",
+    sci: "true",
+    lang: "en",
+  });
+  return `https://sky.esa.int/esasky/?${params.toString()}`;
 }
 
 function headlineStat(label: string, value: string): HTMLElement {
