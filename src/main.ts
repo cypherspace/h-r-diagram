@@ -6,11 +6,13 @@ import {
   gaiaRowToStar,
   queryConeSearch,
 } from "./data/gaia";
+import { lookupSimbadName } from "./data/simbad";
 import { HRDiagram } from "./ui/hrDiagram";
 import { DataPanel } from "./ui/dataPanel";
 import { Controls } from "./ui/controls";
 import { SkyViewer, type CandidateStar } from "./ui/skyViewer";
 import { Walkthrough } from "./ui/walkthrough";
+import { HowItWorks } from "./ui/howItWorks";
 import {
   deleteDiagram,
   loadDiagram,
@@ -40,6 +42,9 @@ class App {
   private starSetsContainer: HTMLElement;
   private skyStatusEl: HTMLElement;
   private inflightGaia: AbortController | null = null;
+  // Cache of source_id → resolved SIMBAD name (or "" if SIMBAD had no
+  // entry, so we don't keep re-querying for the same star).
+  private simbadCache = new Map<string, string>();
 
   constructor() {
     const diagramEl = mustGet("diagram");
@@ -102,6 +107,10 @@ class App {
     tourBtn?.addEventListener("click", () => {
       Walkthrough.reset();
       new Walkthrough().start();
+    });
+    const howBtn = document.getElementById("how-btn");
+    howBtn?.addEventListener("click", () => {
+      new HowItWorks().open();
     });
 
     if (!Walkthrough.hasBeenSeen()) {
@@ -263,9 +272,36 @@ class App {
     this.diagram.setSelected(id);
     if (id) {
       const s = this.plotted.get(id) ?? findStarById(id);
-      if (s) this.dataPanel.show(s);
+      if (s) {
+        this.dataPanel.show(s);
+        // For Gaia stars, ask SIMBAD whether the source has a friendlier
+        // name (Bayer designation, proper name, …) and update the panel
+        // when it returns.
+        void this.maybeResolveGaiaName(s.id);
+      }
     } else {
       this.dataPanel.showEmpty();
+    }
+  }
+
+  private async maybeResolveGaiaName(id: string): Promise<void> {
+    if (!id.startsWith("gaia-")) return;
+    const sourceId = id.slice("gaia-".length);
+    let resolved = this.simbadCache.get(sourceId);
+    if (resolved == null) {
+      const result = await lookupSimbadName(sourceId);
+      resolved = result?.display ?? "";
+      this.simbadCache.set(sourceId, resolved);
+    }
+    if (!resolved) return;
+    const plotted = this.plotted.get(id);
+    if (plotted && plotted.name !== resolved) {
+      plotted.name = resolved;
+    }
+    // Repaint the data panel only if this star is still selected.
+    if (this.selectedId === id) {
+      const s = this.plotted.get(id) ?? findStarById(id);
+      if (s) this.dataPanel.show({ ...s, name: resolved });
     }
   }
 

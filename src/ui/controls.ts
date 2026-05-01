@@ -96,7 +96,7 @@ export class Controls {
         "X",
         [
           ["temperature", "Temperature (K)"],
-          ["bv", "Colour (B − V)"],
+          ["bv", "Colour"],
         ],
         this.axes.xMode,
         (v) => {
@@ -109,20 +109,24 @@ export class Controls {
         },
       ),
     );
-    axesGroup.appendChild(
-      this.makeSelect(
-        "scale",
-        [
-          ["log", "log"],
-          ["linear", "linear"],
-        ],
-        this.axes.xScale,
-        (v) => {
-          this.axes = { ...this.axes, xScale: v as AxisConfig["xScale"] };
-          this.cb.onAxesChange(this.axes);
-        },
-      ),
-    );
+    // X-scale dropdown is meaningless in Colour mode (the axis is
+    // categorical bands), so only show it for the temperature axis.
+    if (this.axes.xMode === "temperature") {
+      axesGroup.appendChild(
+        this.makeSelect(
+          "scale",
+          [
+            ["log", "log"],
+            ["linear", "linear"],
+          ],
+          this.axes.xScale,
+          (v) => {
+            this.axes = { ...this.axes, xScale: v as AxisConfig["xScale"] };
+            this.cb.onAxesChange(this.axes);
+          },
+        ),
+      );
+    }
     this.container.appendChild(axesGroup);
 
     // ---- group: display ----

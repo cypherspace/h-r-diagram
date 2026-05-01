@@ -10,6 +10,7 @@ import {
   luminositySolar,
   plotStar,
   tempFromBV,
+  tempToColourPos,
 } from "./derive";
 import { findStarById } from "./sampleStars";
 
@@ -155,6 +156,24 @@ describe("kelvinToCelsius", () => {
   it("converts standard temperatures correctly", () => {
     expect(kelvinToCelsius(273.15)).toBeCloseTo(0, 5);
     expect(kelvinToCelsius(5778)).toBeCloseTo(5504.85, 2);
+  });
+});
+
+describe("tempToColourPos", () => {
+  it("places hot O stars near the left edge", () => {
+    expect(tempToColourPos(40000)).toBeLessThan(0.15);
+  });
+  it("places M dwarfs near the right edge", () => {
+    expect(tempToColourPos(3000)).toBeGreaterThan(0.85);
+  });
+  it("places the Sun (G2) within the G band (5/7..6/7)", () => {
+    const p = tempToColourPos(5778);
+    expect(p).toBeGreaterThan(4 / 7);
+    expect(p).toBeLessThan(6 / 7);
+  });
+  it("clamps temperatures outside the table range", () => {
+    expect(tempToColourPos(100000)).toBe(0);
+    expect(tempToColourPos(500)).toBe(1);
   });
 });
 

@@ -1,6 +1,10 @@
 import * as d3 from "d3";
 import type { AxisConfig, PlottedStar } from "../types";
-import { blackbodyColor, bvFromTemp } from "../data/derive";
+import {
+  COLOUR_BANDS,
+  blackbodyColor,
+  tempToColourPos,
+} from "../data/derive";
 
 export interface HRDiagramOptions {
   container: HTMLElement;
@@ -231,7 +235,9 @@ export class HRDiagram {
 
   private xValueFn(): (d: PlottedStar) => number {
     if (this.axes.xMode === "temperature") return (d) => d.teff;
-    return (d) => d.bv ?? bvFromTemp(d.teff);
+    // Colour mode: ordinal position derived from the star's temperature
+    // across the 7 OBAFGKM bands; gives evenly-spaced colour labels.
+    return (d) => tempToColourPos(d.teff);
   }
 
   private yValueFn(): (d: PlottedStar) => number {
@@ -243,7 +249,6 @@ export class HRDiagram {
   // base domain stays constant so axes remain physically meaningful.
   private static readonly BOUNDS = {
     teff: [1500, 40000] as const,
-    bv: [-0.5, 2.5] as const,
     luminosity: [1e-4, 1e6] as const,
     absMag: [-12, 18] as const,
   };
@@ -255,10 +260,10 @@ export class HRDiagram {
         this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
       return scale.domain([hi, lo]).range([0, innerW]);
     }
-    const [lo, hi] = HRDiagram.BOUNDS.bv;
-    const scale =
-      this.axes.xScale === "log" ? d3.scaleLog() : d3.scaleLinear();
-    return scale.domain([lo, hi]).range([0, innerW]);
+    // Colour mode: ordinal axis [0..1] = blue → red, mapped from T_eff
+    // by tempToColourPos. Always linear (a "log" colour axis would be
+    // meaningless).
+    return d3.scaleLinear().domain([0, 1]).range([0, innerW]);
   }
 
   private makeYScale(innerH: number): d3.ScaleContinuousNumeric<number, number> {
@@ -276,6 +281,15 @@ export class HRDiagram {
 
   private makeXAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
     const axis = d3.axisBottom(scale);
+    if (this.axes.xMode === "bv") {
+      // Tick at the centre of each colour band, labelled by name.
+      const N = COLOUR_BANDS.length;
+      const tickValues = COLOUR_BANDS.map((_b, i) => (i + 0.5) / N);
+      axis
+        .tickValues(tickValues)
+        .tickFormat((_v, i) => COLOUR_BANDS[i]?.label ?? "");
+      return axis;
+    }
     if (this.axes.xMode === "temperature" && this.axes.xScale === "log") {
       axis.ticks(6, "~s");
     } else {
@@ -298,7 +312,7 @@ export class HRDiagram {
     if (this.axes.xMode === "temperature") {
       return "Surface temperature (K) — hotter ←";
     }
-    return "Colour (blue ← → red)";
+    return "Colour";
   }
 
   private yLabel(): string {

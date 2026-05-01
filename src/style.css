@@ -45,16 +45,89 @@ header h1 {
   color: var(--muted);
   font-size: 0.85rem;
 }
-#tour-btn {
+.header-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+#tour-btn,
+#how-btn {
   background: var(--panel);
   color: var(--fg);
   border: 1px solid var(--accent);
   border-radius: 4px;
-  padding: 0.3rem 0.7rem;
+  padding: 0.35rem 0.75rem;
   font-size: 0.85rem;
   cursor: pointer;
+  font-family: inherit;
 }
-#tour-btn:hover { background: #243057; }
+#tour-btn:hover,
+#how-btn:hover { background: #243057; }
+#how-btn { border-color: var(--accent-2); color: var(--accent-2); }
+
+/* "How it works" modal */
+.how-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 16, 32, 0.78);
+  z-index: 99000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.how-modal {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--grid);
+  border-radius: 8px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem 1.5rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+.how-modal h2 {
+  margin: 0 0 0.7rem;
+  color: var(--accent);
+  font-size: 1.25rem;
+  padding-right: 2rem;
+}
+.how-modal h3 {
+  margin: 1.2rem 0 0.4rem;
+  color: var(--accent-2);
+  font-size: 1rem;
+  border-top: 1px solid var(--grid);
+  padding-top: 0.9rem;
+}
+.how-modal h3:first-of-type { border-top: none; padding-top: 0; }
+.how-modal p {
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.how-modal strong {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 0.15rem;
+}
+.how-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.how-close:hover { color: var(--fg); background: var(--panel-2); }
 
 main {
   display: grid;
@@ -98,16 +171,10 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
 #sky-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.5rem;
   align-items: center;
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
-}
-#sky-controls label {
-  display: flex;
-  gap: 0.3rem;
-  align-items: center;
-  color: var(--muted);
 }
 #sky-controls input,
 #sky-controls select,
@@ -116,12 +183,21 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
   color: var(--fg);
   border: 1px solid var(--grid);
   border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.82rem;
+  font-family: inherit;
 }
 #sky-controls button { cursor: pointer; }
 #sky-controls button:hover { background: #243057; }
-#sky-status { margin-left: auto; }
+#sky-controls input[type="number"] { width: 4rem; }
+#sky-controls input[type="text"] { width: 9rem; }
+#sky-controls input[type="checkbox"] {
+  margin-right: 0.25rem;
+}
+#sky-status {
+  margin-left: auto;
+  color: var(--muted);
+}
 
 #aladin-lite-div {
   flex: 1;

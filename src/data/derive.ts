@@ -228,3 +228,52 @@ export function deriveSpectralType(teff: number, absMagV?: number): string {
 export function kelvinToCelsius(k: number): number {
   return k - 273.15;
 }
+
+// ---- ordinal "named colour" axis ----
+
+// Spectral-class temperature boundaries, in K, from hot (O) to cool (M).
+// These are the standard Morgan-Keenan boundaries; the index of the
+// boundary corresponds to the position of the class on the axis.
+const COLOUR_BOUNDARIES: ReadonlyArray<number> = [
+  60000, // hotter than O
+  30000, // O / B
+  10000, // B / A
+  7500, // A / F
+  6000, // F / G
+  5200, // G / K
+  3700, // K / M
+  1500, // M / cooler
+];
+
+export const COLOUR_BANDS: ReadonlyArray<{ label: string; spectralLetter: string }> =
+  [
+    { label: "blue", spectralLetter: "O" },
+    { label: "blue-white", spectralLetter: "B" },
+    { label: "white", spectralLetter: "A" },
+    { label: "yellow-white", spectralLetter: "F" },
+    { label: "yellow", spectralLetter: "G" },
+    { label: "orange", spectralLetter: "K" },
+    { label: "red", spectralLetter: "M" },
+  ];
+
+/**
+ * Map T_eff to a 0..1 ordinal position where 0 is the hottest end of the
+ * O class and 1 is the coolest end of the M class. Inside each spectral
+ * class the position varies linearly with T_eff, but each class occupies
+ * exactly 1/7 of the axis so the bands look evenly spaced regardless of
+ * how wide their actual temperature range is.
+ */
+export function tempToColourPos(teffK: number): number {
+  const N = COLOUR_BOUNDARIES.length - 1; // 7 classes
+  if (teffK >= COLOUR_BOUNDARIES[0]) return 0;
+  if (teffK <= COLOUR_BOUNDARIES[N]) return 1;
+  for (let i = 0; i < N; i++) {
+    const hot = COLOUR_BOUNDARIES[i];
+    const cool = COLOUR_BOUNDARIES[i + 1];
+    if (teffK <= hot && teffK >= cool) {
+      const f = (hot - teffK) / (hot - cool);
+      return (i + f) / N;
+    }
+  }
+  return 1;
+}
