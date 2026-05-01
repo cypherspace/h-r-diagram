@@ -73,7 +73,7 @@ export class DataPanel {
         "Brightness at a standard distance (absolute magnitude)",
         absMag.toFixed(2),
       ),
-      ...secondaryRow("Spectral class", spectralType),
+      ...spectralRow(spectralType),
     );
     this.container.appendChild(secondary);
 
@@ -167,6 +167,82 @@ function secondaryRow(label: string, value: string): [HTMLElement, HTMLElement] 
   const dd = document.createElement("dd");
   dd.textContent = value;
   return [dt, dd];
+}
+
+// Spectral class plus a "?" help disclosure that explains the letter +
+// digit + roman-numeral notation in plain English. Click the "?" to
+// expand a small explainer in-line; a Wikipedia link is included for
+// students who want to read further.
+function spectralRow(value: string): HTMLElement[] {
+  const dt = document.createElement("dt");
+  dt.className = "spectral-dt";
+  dt.append("Spectral class");
+  const help = document.createElement("button");
+  help.type = "button";
+  help.className = "spectral-help-btn";
+  help.textContent = "?";
+  help.title = "What does this mean?";
+  dt.append(" ", help);
+
+  const dd = document.createElement("dd");
+  dd.textContent = value;
+
+  const helpBox = document.createElement("dd");
+  helpBox.className = "spectral-help-box";
+  helpBox.hidden = true;
+  helpBox.append(buildSpectralHelp());
+
+  help.addEventListener("click", () => {
+    helpBox.hidden = !helpBox.hidden;
+    help.classList.toggle("open", !helpBox.hidden);
+  });
+
+  return [dt, dd, helpBox];
+}
+
+function buildSpectralHelp(): DocumentFragment {
+  const frag = document.createDocumentFragment();
+
+  const intro = document.createElement("p");
+  intro.textContent =
+    "Stars are sorted by surface temperature into 7 main classes, hottest to coolest:";
+  frag.appendChild(intro);
+
+  const list = document.createElement("ul");
+  for (const [letter, desc] of [
+    ["O", "very hot blue stars"],
+    ["B", "hot blue-white stars"],
+    ["A", "white stars (Sirius, Vega)"],
+    ["F", "yellow-white stars"],
+    ["G", "yellow stars (the Sun)"],
+    ["K", "orange stars"],
+    ["M", "cool red stars (most stars in the galaxy)"],
+  ] as const) {
+    const li = document.createElement("li");
+    const b = document.createElement("strong");
+    b.textContent = letter;
+    li.append(b, " — ", desc);
+    list.appendChild(li);
+  }
+  frag.appendChild(list);
+
+  const detail = document.createElement("p");
+  detail.innerHTML =
+    "A digit 0–9 narrows the temperature within the class, and a Roman numeral hints at the star's size: " +
+    "<strong>V</strong> main sequence (most stars live here), " +
+    "<strong>III</strong> giant, <strong>I</strong> supergiant, " +
+    "<strong>D</strong> white dwarf.";
+  frag.appendChild(detail);
+
+  const link = document.createElement("a");
+  link.href = "https://en.wikipedia.org/wiki/Stellar_classification";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Read more on Wikipedia →";
+  link.className = "spectral-help-link";
+  frag.appendChild(link);
+
+  return frag;
 }
 
 function formatTemperatureK(k: number): string {

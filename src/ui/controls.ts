@@ -36,14 +36,17 @@ export class Controls {
 
   refreshSavedList(): void {
     const diagrams = listDiagrams();
-    this.savedSelect.innerHTML =
-      '<option value="">— saved diagrams —</option>' +
-      diagrams
-        .map(
-          (d) =>
-            `<option value="${escape(d.name)}">${escape(d.name)}</option>`,
-        )
-        .join("");
+    this.savedSelect.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "— saved charts —";
+    this.savedSelect.appendChild(placeholder);
+    for (const d of diagrams) {
+      const o = document.createElement("option");
+      o.value = d.name;
+      o.textContent = d.name;
+      this.savedSelect.appendChild(o);
+    }
   }
 
   setAxes(axes: AxisConfig): void {
@@ -52,11 +55,13 @@ export class Controls {
   }
 
   private render(): void {
-    this.container.innerHTML = "";
+    this.container.replaceChildren();
 
-    this.container.appendChild(
+    // ---- group: axes ----
+    const axesGroup = group("Axes");
+    axesGroup.appendChild(
       this.makeSelect(
-        "Y axis",
+        "Y",
         [
           ["luminosity", "Brightness (× the Sun)"],
           ["absoluteMagnitude", "Absolute magnitude"],
@@ -64,7 +69,6 @@ export class Controls {
         this.axes.yMode,
         (v) => {
           const yMode = v as AxisConfig["yMode"];
-          // Pick a sensible scale to match the new axis mode.
           const yScale: AxisConfig["yScale"] =
             yMode === "luminosity" ? "log" : "linear";
           this.axes = { ...this.axes, yMode, yScale };
@@ -73,10 +77,9 @@ export class Controls {
         },
       ),
     );
-
-    this.container.appendChild(
+    axesGroup.appendChild(
       this.makeSelect(
-        "Y scale",
+        "scale",
         [
           ["log", "log"],
           ["linear", "linear"],
@@ -88,10 +91,9 @@ export class Controls {
         },
       ),
     );
-
-    this.container.appendChild(
+    axesGroup.appendChild(
       this.makeSelect(
-        "X axis",
+        "X",
         [
           ["temperature", "Temperature (K)"],
           ["bv", "Colour (B − V)"],
@@ -107,10 +109,9 @@ export class Controls {
         },
       ),
     );
-
-    this.container.appendChild(
+    axesGroup.appendChild(
       this.makeSelect(
-        "X scale",
+        "scale",
         [
           ["log", "log"],
           ["linear", "linear"],
@@ -122,10 +123,13 @@ export class Controls {
         },
       ),
     );
+    this.container.appendChild(axesGroup);
 
-    this.container.appendChild(
+    // ---- group: display ----
+    const displayGroup = group("Display");
+    displayGroup.appendChild(
       this.makeSelect(
-        "Dot size",
+        "Dots",
         [
           ["2", "tiny"],
           ["3", "small"],
@@ -142,59 +146,57 @@ export class Controls {
         },
       ),
     );
-
-    const zoomGroup = document.createElement("span");
-    zoomGroup.className = "zoom-group";
-    zoomGroup.append(
+    const zoomCluster = document.createElement("span");
+    zoomCluster.className = "control-cluster";
+    const zLabel = document.createElement("span");
+    zLabel.className = "control-cluster-label";
+    zLabel.textContent = "Zoom";
+    zoomCluster.append(
+      zLabel,
       button("−", () => this.cb.onZoomOut(), "Zoom out"),
       button("+", () => this.cb.onZoomIn(), "Zoom in"),
-      button("Reset zoom", () => this.cb.onZoomReset()),
+      button("Reset", () => this.cb.onZoomReset(), "Reset zoom"),
     );
-    this.container.appendChild(zoomGroup);
+    displayGroup.appendChild(zoomCluster);
+    this.container.appendChild(displayGroup);
 
-    const clearAll = button("Clear all", () => this.cb.onClearAll());
-    this.container.appendChild(clearAll);
+    // ---- group: edit ----
+    const editGroup = group("Edit");
+    editGroup.appendChild(button("Clear all", () => this.cb.onClearAll()));
+    editGroup.appendChild(
+      button("Remove selected", () => this.cb.onClearSelected()),
+    );
+    this.container.appendChild(editGroup);
 
-    const clearSel = button("Remove selected", () => this.cb.onClearSelected());
-    this.container.appendChild(clearSel);
-
-    const sep = document.createElement("span");
-    sep.style.borderLeft = "1px solid var(--grid)";
-    sep.style.height = "1.5rem";
-    sep.style.margin = "0 0.25rem";
-    this.container.appendChild(sep);
-
+    // ---- group: save / load ----
+    const saveGroup = group("Save & load");
     const nameInput = document.createElement("input");
     nameInput.type = "text";
-    nameInput.placeholder = "diagram name";
-    nameInput.style.width = "9rem";
-    this.container.appendChild(nameInput);
-
-    this.container.appendChild(
+    nameInput.placeholder = "chart name";
+    nameInput.className = "save-name";
+    saveGroup.appendChild(nameInput);
+    saveGroup.appendChild(
       button("Save", () => {
         const name = nameInput.value.trim();
         if (!name) {
-          alert("Enter a name to save.");
+          alert("Enter a name to save the chart.");
           return;
         }
         this.cb.onSave(name);
         this.refreshSavedList();
       }),
     );
-
     const savedSelect = document.createElement("select");
     this.savedSelect = savedSelect;
-    this.container.appendChild(savedSelect);
-
-    this.container.appendChild(
+    saveGroup.appendChild(savedSelect);
+    saveGroup.appendChild(
       button("Load", () => {
         const name = savedSelect.value;
         if (!name) return;
         this.cb.onLoad(name);
       }),
     );
-
-    this.container.appendChild(
+    saveGroup.appendChild(
       button("Delete", () => {
         const name = savedSelect.value;
         if (!name) return;
@@ -203,6 +205,7 @@ export class Controls {
         this.refreshSavedList();
       }),
     );
+    this.container.appendChild(saveGroup);
 
     this.refreshSavedList();
   }
@@ -214,7 +217,10 @@ export class Controls {
     onChange: (v: string) => void,
   ): HTMLLabelElement {
     const wrap = document.createElement("label");
-    wrap.append(label);
+    wrap.className = "control-pair";
+    const span = document.createElement("span");
+    span.textContent = label;
+    wrap.appendChild(span);
     const sel = document.createElement("select");
     for (const [v, t] of opts) {
       const o = document.createElement("option");
@@ -229,6 +235,16 @@ export class Controls {
   }
 }
 
+function group(title: string): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "control-group";
+  const heading = document.createElement("span");
+  heading.className = "control-group-heading";
+  heading.textContent = title;
+  div.appendChild(heading);
+  return div;
+}
+
 function button(
   label: string,
   onClick: () => void,
@@ -239,18 +255,4 @@ function button(
   if (title) b.title = title;
   b.addEventListener("click", onClick);
   return b;
-}
-
-function escape(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&"
-      ? "&amp;"
-      : c === "<"
-        ? "&lt;"
-        : c === ">"
-          ? "&gt;"
-          : c === '"'
-            ? "&quot;"
-            : "&#39;",
-  );
 }

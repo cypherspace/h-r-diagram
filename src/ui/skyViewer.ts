@@ -243,8 +243,8 @@ export class SkyViewer {
           return;
         }
         const overlay = window.A.graphicOverlay({
-          color: "#9aa8d8",
-          lineWidth: 1.2,
+          color: "#4a5478",
+          lineWidth: 0.8,
           name: "Constellations",
         });
         this.aladin.addOverlay(overlay);

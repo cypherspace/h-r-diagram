@@ -3,6 +3,7 @@ import {
   M_V_SUN,
   absoluteMagnitude,
   blackbodyRgb,
+  bolometricCorrection,
   bvFromTemp,
   deriveSpectralType,
   kelvinToCelsius,
@@ -28,12 +29,42 @@ describe("absoluteMagnitude", () => {
 });
 
 describe("luminositySolar", () => {
-  it("gives 1 L_sun for the Sun's M_V", () => {
-    expect(luminositySolar(M_V_SUN)).toBeCloseTo(1, 10);
+  it("gives ~1 L_sun for the Sun when bolometric correction is applied", () => {
+    expect(luminositySolar(M_V_SUN, 5778)).toBeCloseTo(1, 0);
   });
 
-  it("scales by 100 for a 5-mag brighter star", () => {
-    expect(luminositySolar(M_V_SUN - 5)).toBeCloseTo(100, 5);
+  it("scales by ~100 for a 5-mag brighter star at the same temperature", () => {
+    const hot = 5778;
+    expect(
+      luminositySolar(M_V_SUN - 5, hot) / luminositySolar(M_V_SUN, hot),
+    ).toBeCloseTo(100, 5);
+  });
+
+  it("returns more luminosity for a hot blue star than its V-band-only value", () => {
+    // M_V = 0 should give a much larger L_bol for a hot O star than for
+    // a sun-like one, because BC for O stars is large and negative.
+    const lHot = luminositySolar(0, 30000);
+    const lSun = luminositySolar(0, 5778);
+    expect(lHot).toBeGreaterThan(lSun * 10);
+  });
+});
+
+describe("bolometricCorrection", () => {
+  it("is small (<= 0.2 mag) for sun-like stars", () => {
+    expect(Math.abs(bolometricCorrection(5778))).toBeLessThan(0.2);
+  });
+  it("is strongly negative for very hot stars (Teff > 30000 K)", () => {
+    expect(bolometricCorrection(30000)).toBeLessThan(-2);
+  });
+  it("is strongly negative for very cool stars (Teff < 3000 K)", () => {
+    expect(bolometricCorrection(2500)).toBeLessThan(-2);
+  });
+  it("is monotonic-ish across the table", () => {
+    // BC has a minimum around 7500 K and is negative on both sides.
+    expect(bolometricCorrection(2500)).toBeLessThan(bolometricCorrection(3500));
+    expect(bolometricCorrection(40000)).toBeLessThan(
+      bolometricCorrection(15000),
+    );
   });
 });
 

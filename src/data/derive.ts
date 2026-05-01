@@ -1,15 +1,80 @@
 import type { PlottedStar, Star } from "../types";
 
 export const M_V_SUN = 4.83;
+// IAU 2015 nominal bolometric absolute magnitude for the Sun.
+export const M_BOL_SUN = 4.74;
 
 export function absoluteMagnitude(mV: number, distancePc: number): number {
   if (distancePc <= 0) throw new Error("distance must be positive");
   return mV - 5 * Math.log10(distancePc / 10);
 }
 
-export function luminositySolar(absMagV: number, bolometricCorrection = 0): number {
-  const mBol = absMagV + bolometricCorrection;
-  return Math.pow(10, (M_V_SUN - mBol) / 2.5);
+// Approximate bolometric correction (mag) as a function of T_eff. Values
+// follow Pecaut & Mamajek (2013) for the main sequence with extrapolations
+// for cool giants/supergiants and the OB tail. The function piecewise-
+// linearly interpolates between the table entries; for an educational
+// visualisation this is accurate to ≲ 0.3 mag — fine, given that
+// published bolometric luminosities for individual stars are themselves
+// uncertain at that level.
+const BC_TABLE: ReadonlyArray<readonly [number, number]> = [
+  [2200, -4.0],
+  [2400, -3.4],
+  [2700, -2.6],
+  [3000, -2.4],
+  [3300, -1.7],
+  [3500, -1.4],
+  [3800, -1.0],
+  [4100, -0.7],
+  [4400, -0.5],
+  [4700, -0.35],
+  [5000, -0.20],
+  [5300, -0.13],
+  [5600, -0.10],
+  [5800, -0.07],
+  [6000, -0.06],
+  [6500, -0.04],
+  [7000, -0.03],
+  [7500, 0.0],
+  [8000, -0.05],
+  [9000, -0.15],
+  [10000, -0.30],
+  [12000, -0.7],
+  [14000, -1.0],
+  [16000, -1.4],
+  [18000, -1.7],
+  [20000, -2.0],
+  [25000, -2.5],
+  [30000, -2.95],
+  [35000, -3.3],
+  [40000, -3.5],
+  [50000, -4.0],
+];
+
+export function bolometricCorrection(teffK: number): number {
+  if (teffK <= BC_TABLE[0][0]) return BC_TABLE[0][1];
+  const last = BC_TABLE[BC_TABLE.length - 1];
+  if (teffK >= last[0]) return last[1];
+  for (let i = 0; i < BC_TABLE.length - 1; i++) {
+    const [t1, bc1] = BC_TABLE[i];
+    const [t2, bc2] = BC_TABLE[i + 1];
+    if (teffK >= t1 && teffK <= t2) {
+      const f = (teffK - t1) / (t2 - t1);
+      return bc1 + f * (bc2 - bc1);
+    }
+  }
+  return 0;
+}
+
+// Bolometric solar luminosity from V-band absolute magnitude. If T_eff
+// is given, applies a bolometric correction so cool red and hot blue
+// stars don't get systematically under-counted (their energy spills into
+// IR / UV, missing the V band). Without T_eff this falls back to the
+// V-band-only formula, which is only correct for F/G/K main-sequence
+// stars where BC ≈ 0.
+export function luminositySolar(absMagV: number, teffK?: number): number {
+  const bc = teffK != null ? bolometricCorrection(teffK) : 0;
+  const mBol = absMagV + bc;
+  return Math.pow(10, (M_BOL_SUN - mBol) / 2.5);
 }
 
 // Ballesteros 2012, valid for main-sequence stars roughly 3000-10000 K.
@@ -35,10 +100,13 @@ export function bvFromTemp(teff: number): number {
 
 export function plotStar(star: Star): PlottedStar {
   const absMag = absoluteMagnitude(star.mV, star.distancePc);
+  // Prefer a published bolometric luminosity if the curated record has
+  // one; otherwise compute from m_V using the BC table.
+  const lum = star.luminosity ?? luminositySolar(absMag, star.teff);
   return {
     ...star,
     absMag,
-    luminositySolar: luminositySolar(absMag),
+    luminositySolar: lum,
   };
 }
 
