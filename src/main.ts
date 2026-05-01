@@ -1,6 +1,12 @@
 import "./style.css";
 import { SAMPLE_STARS, findStarById } from "./data/sampleStars";
 import { plotStar } from "./data/derive";
+import {
+  GaiaError,
+  gaiaRowToStar,
+  nearestRow,
+  queryConeSearch,
+} from "./data/gaia";
 import { HRDiagram } from "./ui/hrDiagram";
 import { DataPanel } from "./ui/dataPanel";
 import { Controls } from "./ui/controls";
@@ -11,6 +17,9 @@ import {
   saveDiagram,
 } from "./store/diagrams";
 import type { AxisConfig, PlottedStar, Star } from "./types";
+
+const CONE_RADIUS_DEG = 0.05; // ~3 arcmin
+const MAX_PLOTTED = 500;
 
 const defaultAxes: AxisConfig = {
   yMode: "luminosity",
@@ -28,13 +37,15 @@ class App {
   private controls: Controls;
   private skyViewer: SkyViewer;
   private catalogList: HTMLUListElement;
+  private skyStatusEl: HTMLElement;
+  private inflightGaia: AbortController | null = null;
 
   constructor() {
     const diagramEl = mustGet("diagram");
     const controlsEl = mustGet("diagram-controls");
     const dataEl = mustGet("data-panel");
     const aladinEl = mustGet("aladin-lite-div");
-    const skyStatusEl = mustGet("sky-status");
+    this.skyStatusEl = mustGet("sky-status");
     this.catalogList = mustGet("catalog-list") as HTMLUListElement;
 
     this.dataPanel = new DataPanel(dataEl);
@@ -67,8 +78,9 @@ class App {
       initialSurvey: "P/DSS2/color",
       initialFov: 60,
       onStarClick: (star) => this.toggleStar(star),
+      onSkyClick: (ra, dec) => void this.queryGaiaAt(ra, dec),
       onStatus: (msg) => {
-        skyStatusEl.textContent = msg;
+        this.skyStatusEl.textContent = msg;
       },
     });
     void this.skyViewer.setSampleStars(SAMPLE_STARS);
@@ -157,18 +169,69 @@ class App {
     this.refresh();
   }
 
+  private async queryGaiaAt(ra: number, dec: number): Promise<void> {
+    if (this.plotted.size >= MAX_PLOTTED) {
+      this.skyStatusEl.textContent = `Diagram already has ${MAX_PLOTTED} stars.`;
+      return;
+    }
+    this.inflightGaia?.abort();
+    const ctrl = new AbortController();
+    this.inflightGaia = ctrl;
+    this.skyStatusEl.textContent = `Querying Gaia at ${ra.toFixed(2)}°, ${dec.toFixed(2)}°…`;
+    try {
+      const rows = await queryConeSearch(ra, dec, CONE_RADIUS_DEG, {
+        topN: 50,
+        signal: ctrl.signal,
+      });
+      if (ctrl.signal.aborted) return;
+      if (rows.length === 0) {
+        this.skyStatusEl.textContent =
+          "No Gaia stars with valid parallax in that region.";
+        return;
+      }
+      const best = nearestRow(rows, ra, dec);
+      if (!best) return;
+      const star = gaiaRowToStar(best);
+      this.plotted.set(star.id, plotStar(star));
+      this.select(star.id);
+      this.refresh();
+      this.skyStatusEl.textContent = `Added ${star.name} (G=${best.g_mag.toFixed(2)}, π=${best.parallax_mas.toFixed(2)} mas).`;
+    } catch (e) {
+      if (ctrl.signal.aborted) return;
+      const msg =
+        e instanceof GaiaError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      this.skyStatusEl.textContent = `Gaia query failed: ${msg}`;
+    } finally {
+      if (this.inflightGaia === ctrl) this.inflightGaia = null;
+    }
+  }
+
   private save(name: string): void {
-    const ids = Array.from(this.plotted.keys());
-    saveDiagram(name, ids, this.axes);
+    const stars: Star[] = Array.from(this.plotted.values()).map((p) => ({
+      id: p.id,
+      name: p.name,
+      ra: p.ra,
+      dec: p.dec,
+      mV: p.mV,
+      distancePc: p.distancePc,
+      teff: p.teff,
+      bv: p.bv,
+      spectralType: p.spectralType,
+      notes: p.notes,
+    }));
+    saveDiagram(name, stars, this.axes);
   }
 
   private load(name: string): void {
     const saved = loadDiagram(name);
     if (!saved) return;
     this.plotted.clear();
-    for (const id of saved.starIds) {
-      const star = findStarById(id);
-      if (star) this.plotted.set(id, plotStar(star));
+    for (const star of saved.stars) {
+      this.plotted.set(star.id, plotStar(star));
     }
     this.axes = saved.axes;
     this.controls.setAxes(saved.axes);

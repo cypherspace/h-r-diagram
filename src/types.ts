@@ -30,6 +30,6 @@ export interface AxisConfig {
 export interface SavedDiagram {
   name: string;
   savedAt: number;
-  starIds: string[];
+  stars: Star[];
   axes: AxisConfig;
 }

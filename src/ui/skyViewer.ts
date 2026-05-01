@@ -27,10 +27,12 @@ interface AladinInstance {
     },
   ) => void;
   gotoRaDec: (ra: number, dec: number) => void;
+  getRaDec: () => [number, number];
+  getFov: () => [number, number];
   addCatalog: (cat: AladinCatalog) => void;
   on: (
-    event: "objectClicked" | "objectHovered",
-    handler: (obj: AladinSource | null) => void,
+    event: string,
+    handler: (...args: unknown[]) => void,
   ) => void;
 }
 
@@ -54,6 +56,7 @@ export interface SkyViewerOptions {
   initialSurvey?: string;
   initialFov?: number;
   onStarClick?: (star: Star) => void;
+  onSkyClick?: (raDeg: number, decDeg: number) => void;
   onStatus?: (msg: string) => void;
 }
 
@@ -100,7 +103,10 @@ export class SkyViewer {
     });
     this.aladin.addCatalog(this.sampleCatalog);
 
-    this.aladin.on("objectClicked", (obj) => {
+    let lastObjectClickAt = 0;
+    this.aladin.on("objectClicked", (...args: unknown[]) => {
+      const obj = args[0] as AladinSource | null;
+      lastObjectClickAt = Date.now();
       if (!obj) return;
       const id = obj.data?.id;
       if (typeof id === "string") {
@@ -109,7 +115,28 @@ export class SkyViewer {
       }
     });
 
-    this.opts.onStatus?.("Ready. Drag to pan, scroll to zoom.");
+    this.aladin.on("click", (...args: unknown[]) => {
+      // Aladin fires `click` after `objectClicked` for catalog hits; debounce.
+      if (Date.now() - lastObjectClickAt < 300) return;
+      const evt = args[0] as { ra?: number; dec?: number } | undefined;
+      const ra = evt?.ra;
+      const dec = evt?.dec;
+      if (typeof ra === "number" && typeof dec === "number") {
+        this.opts.onSkyClick?.(ra, dec);
+      }
+    });
+
+    this.opts.onStatus?.("Ready. Click anywhere to query Gaia.");
+  }
+
+  async getCenter(): Promise<[number, number] | null> {
+    await this.ready;
+    return this.aladin?.getRaDec() ?? null;
+  }
+
+  async getFov(): Promise<[number, number] | null> {
+    await this.ready;
+    return this.aladin?.getFov() ?? null;
   }
 
   async setSampleStars(stars: Star[]): Promise<void> {

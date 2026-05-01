@@ -1,4 +1,4 @@
-import type { AxisConfig, SavedDiagram } from "../types";
+import type { AxisConfig, SavedDiagram, Star } from "../types";
 
 const KEY = "hrd:diagrams:v1";
 
@@ -23,14 +23,14 @@ export function listDiagrams(): SavedDiagram[] {
 
 export function saveDiagram(
   name: string,
-  starIds: string[],
+  stars: Star[],
   axes: AxisConfig,
 ): SavedDiagram {
   const map = readAll();
   const diagram: SavedDiagram = {
     name,
     savedAt: Date.now(),
-    starIds,
+    stars,
     axes,
   };
   map[name] = diagram;
