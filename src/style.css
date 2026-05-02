@@ -115,6 +115,12 @@ header h1 {
   font-weight: 600;
   margin-right: 0.15rem;
 }
+.how-modal a,
+.how-modal a:visited {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+.how-modal a:hover { color: var(--accent); }
 .how-close {
   position: absolute;
   top: 0.6rem;
