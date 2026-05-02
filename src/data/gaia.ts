@@ -23,6 +23,9 @@ export interface GaiaRow {
 
 export class GaiaError extends Error {
   public override readonly cause?: unknown;
+  // Set true for errors worth retrying automatically (e.g. 503
+  // "service too busy"). Inspected by runAdql.
+  public transient = false;
   constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "GaiaError";
@@ -44,7 +47,8 @@ function buildConeAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  g."Source", g."RA_ICRS", g."DE_ICRS", g."Plx", g."e_Plx", g."Gmag",
+  g."Source" AS source_id, g."RA_ICRS" AS ra, g."DE_ICRS" AS dec,
+  g."Plx" AS plx, g."e_Plx" AS e_plx, g."Gmag" AS gmag,
   (g."BPmag" - g."RPmag") AS bprp,
   p."Teff" AS teff_pub,
   p."Lum-Flame" AS lum_flame
@@ -61,7 +65,7 @@ WHERE 1 = CONTAINS(
   AND (g."Plx" / g."e_Plx") > 5
   AND g."Gmag" IS NOT NULL
   AND g."Gmag" < ${magLimit}
-ORDER BY g."Gmag" ASC`;
+ORDER BY gmag ASC`;
 }
 
 function buildBoxAdql(
@@ -73,7 +77,8 @@ function buildBoxAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  g."Source", g."RA_ICRS", g."DE_ICRS", g."Plx", g."e_Plx", g."Gmag",
+  g."Source" AS source_id, g."RA_ICRS" AS ra, g."DE_ICRS" AS dec,
+  g."Plx" AS plx, g."e_Plx" AS e_plx, g."Gmag" AS gmag,
   (g."BPmag" - g."RPmag") AS bprp,
   p."Teff" AS teff_pub,
   p."Lum-Flame" AS lum_flame
@@ -88,7 +93,7 @@ WHERE g."RA_ICRS" BETWEEN ${raMin} AND ${raMax}
   AND (g."Plx" / g."e_Plx") > 5
   AND g."Gmag" IS NOT NULL
   AND g."Gmag" < ${magLimit}
-ORDER BY g."Gmag" ASC`;
+ORDER BY gmag ASC`;
 }
 
 export async function queryConeSearch(
@@ -126,6 +131,33 @@ export async function queryBox(
 }
 
 async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
+  // VizieR's TAP service is shared infrastructure and occasionally
+  // returns 503 ("TAP service too busy"). Retry once after a short
+  // wait — the second attempt almost always succeeds. Beyond that,
+  // surface a friendly message rather than the raw VOTable error XML.
+  const MAX_ATTEMPTS = 2;
+  let lastErr: GaiaError | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await runAdqlOnce(adql, signal);
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      if (e instanceof GaiaError && e.transient && attempt < MAX_ATTEMPTS) {
+        lastErr = e;
+        await sleep(1500, signal);
+        continue;
+      }
+      throw e;
+    }
+  }
+  // Should be unreachable — the loop either returns or throws.
+  throw lastErr ?? new GaiaError("VizieR query failed.");
+}
+
+async function runAdqlOnce(
+  adql: string,
+  signal?: AbortSignal,
+): Promise<GaiaRow[]> {
   const params = new URLSearchParams({
     REQUEST: "doQuery",
     LANG: "ADQL",
@@ -152,11 +184,29 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
   const text = await res.text();
   if (!res.ok) {
     console.error("[gaia] HTTP", res.status, text.slice(0, 500));
+    // 503 = "TAP service too busy" — transient, worth a retry.
+    if (res.status === 503 || /service too busy/i.test(text)) {
+      const err = new GaiaError(
+        "VizieR is busy right now. Please try again in a moment.",
+      );
+      err.transient = true;
+      throw err;
+    }
     throw new GaiaError(
       `VizieR returned HTTP ${res.status}. ${text.slice(0, 200)}`,
     );
   }
   return parseCsv(text);
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(t);
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+  });
 }
 
 // VizieR returns CSV with a header row followed by data rows.
