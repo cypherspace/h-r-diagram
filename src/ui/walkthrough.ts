@@ -46,30 +46,43 @@ const STEPS: Step[] = [
     target: "#add-all-btn",
     title: "Add stars to the chart",
     body:
-      "Click a star's blue cross to view data about the star, and add it " +
-      'to the diagram.\n\nIf you want to add lots at once, you can click ' +
-      '"Add all".\n\nIf you don\'t know much about stars at this point, ' +
-      "we've loaded some interesting ones up for you. You can click a " +
-      "marker to see that star, add it to the diagram, and then follow " +
-      "through to read about it on Wikipedia if you like. You can also " +
-      "add whole sets of stars, using the famous groups, onto the diagram " +
-      "at once to see where they appear.",
+      "Once you've found some stars with data, you can start building " +
+      "your diagram. Click a star's blue cross. It'll add it to the " +
+      "diagram, and also show some data about this star in the " +
+      "right-hand pane.\n\n" +
+      'If you want to add lots to the diagram at once, you can click ' +
+      '"Add all".\n\n' +
+      "If you don't know where to start, we've added some highlighted " +
+      "stars for you; click a few and you might find one you've heard " +
+      "of.",
   },
   {
     target: "#diagram",
     title: "Watch the patterns appear",
     body:
       "Every dot represents a star in its real colour. You'll see that " +
-      "hotter stars look bluer; cooler stars look redder. Click any dot " +
-      "to see that star's info on the right and to recentre the sky on it.",
+      "hotter stars look bluer; cooler stars look redder.\n\n" +
+      "Once you've added some star dots, click any dot to see that " +
+      "star's info again. You'll also recentre the sky view on it.\n\n" +
+      "You can scroll around and zoom in to different areas of the " +
+      "graph. There are also some options to help you get it to look " +
+      "the way you're most familiar with.",
   },
   {
     target: "#info-panel",
     title: "Read the star's info",
     body:
-      "Pick any star and you'll see its temperature, brightness, distance " +
-      "and a small picture of where it sits in the sky. You can change the " +
-      "diagram to show the measurements that you understand best.",
+      "Here, you can pick any star and you'll see its temperature, " +
+      "brightness, distance, diameter, and a small picture of where " +
+      "it sits in the sky.\n\n" +
+      "You can also see magnitude and spectral class.\n\n" +
+      "If a star has its own Wikipedia entry, you'll be able to see " +
+      "that here too, and we'll also show you ways to find out even " +
+      "more about any particular star that you find interesting.\n\n" +
+      "Finally, this is also the place where you can find all those " +
+      "interesting stars we highlight on the map, but grouped together " +
+      "in categories. Add an entire category to the graph if you like — " +
+      "you might find patterns appearing quite quickly…",
   },
 ];
 
