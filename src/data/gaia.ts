@@ -209,6 +209,12 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+// Exposed for tests — exercises the same parser path used in
+// production but lets tests pass synthetic CSV without a network call.
+export function _parseCsvForTests(text: string): GaiaRow[] {
+  return parseCsv(text);
+}
+
 // VizieR returns CSV with a header row followed by data rows.
 // Columns we expect (in declared SELECT order):
 // Source, RA_ICRS, DE_ICRS, Plx, e_Plx, Gmag, bprp, teff_pub, lum_flame
@@ -226,12 +232,17 @@ function parseCsv(text: string): GaiaRow[] {
     }
     return -1;
   };
-  const iSource = idx("Source", "source");
-  const iRa = idx("RA_ICRS", "ra_icrs", "ra", "RAJ2000");
-  const iDec = idx("DE_ICRS", "de_icrs", "dec", "DEJ2000");
-  const iPlx = idx("Plx", "plx", "parallax");
-  const iEPlx = idx("e_Plx", "e_plx");
-  const iG = idx("Gmag", "gmag", "phot_g_mean_mag");
+  // VizieR's ADQL parser rejects unaliased qualified columns when both
+  // joined tables have the same column name. We alias every SELECT
+  // entry, so headers come back as source_id / ra / dec / plx / e_plx /
+  // gmag / bprp / teff_pub / lum_flame. The original (unaliased) names
+  // are kept as fallbacks for safety / future-proofing.
+  const iSource = idx("source_id", "Source", "source");
+  const iRa = idx("ra", "RA_ICRS", "ra_icrs", "RAJ2000");
+  const iDec = idx("dec", "DE_ICRS", "de_icrs", "DEJ2000");
+  const iPlx = idx("plx", "Plx", "parallax");
+  const iEPlx = idx("e_plx", "e_Plx");
+  const iG = idx("gmag", "Gmag", "phot_g_mean_mag");
   const iBpRp = idx("bprp", "BP-RP", "bp_rp");
   const iTeffPub = idx("teff_pub", "Teff", "teff");
   const iLumFlame = idx("lum_flame", "Lum-Flame", "lumflame");
