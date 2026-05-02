@@ -9,3 +9,8 @@ vite.config.js
 .firebase/
 firebase-debug.log
 firebase-debug.*.log
+
+# Firebase CLI / Claude tooling local state
+.agents/
+.claude/
+skills-lock.json
