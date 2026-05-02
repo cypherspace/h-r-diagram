@@ -13,6 +13,7 @@ import { Controls } from "./ui/controls";
 import { SkyViewer, type CandidateStar } from "./ui/skyViewer";
 import { Walkthrough } from "./ui/walkthrough";
 import { HowItWorks } from "./ui/howItWorks";
+import { HowWeKnow } from "./ui/howWeKnow";
 import {
   deleteDiagram,
   loadDiagram,
@@ -28,6 +29,8 @@ const defaultAxes: AxisConfig = {
   xMode: "temperature",
   yScale: "log",
   xScale: "log",
+  yLabelFormat: "decimals",
+  yUnit: "solar",
 };
 
 class App {
@@ -111,6 +114,10 @@ class App {
     const howBtn = document.getElementById("how-btn");
     howBtn?.addEventListener("click", () => {
       new HowItWorks().open();
+    });
+    const howWeKnowBtn = document.getElementById("how-we-know-btn");
+    howWeKnowBtn?.addEventListener("click", () => {
+      new HowWeKnow().open();
     });
 
     if (!Walkthrough.hasBeenSeen()) {
@@ -267,11 +274,15 @@ class App {
     this.refresh();
   }
 
-  private select(id: string | null): void {
+  private select(id: string | null, fallback?: Star): void {
     this.selectedId = id;
     this.diagram.setSelected(id);
     if (id) {
-      const s = this.plotted.get(id) ?? findStarById(id);
+      // Try the chart, then the curated sample sets, then the fallback
+      // (a freshly-clicked Gaia candidate from the sky map that isn't
+      // on the chart yet). Without the fallback, clicking a candidate
+      // marker just after a search showed nothing in the data panel.
+      const s = this.plotted.get(id) ?? findStarById(id) ?? fallback;
       if (s) {
         this.dataPanel.show(s);
         // For Gaia stars, ask SIMBAD whether the source has a friendlier
@@ -295,13 +306,14 @@ class App {
     }
     if (!resolved) return;
     const plotted = this.plotted.get(id);
-    if (plotted && plotted.name !== resolved) {
-      plotted.name = resolved;
+    if (plotted) {
+      if (plotted.name !== resolved) plotted.name = resolved;
+      plotted.resolved = true;
     }
     // Repaint the data panel only if this star is still selected.
     if (this.selectedId === id) {
       const s = this.plotted.get(id) ?? findStarById(id);
-      if (s) this.dataPanel.show({ ...s, name: resolved });
+      if (s) this.dataPanel.show({ ...s, name: resolved, resolved: true });
     }
   }
 
@@ -347,7 +359,7 @@ class App {
       await this.skyViewer.setCandidates(candidates);
       this.skyStatusEl.textContent =
         candidates.length > 0
-          ? `Found ${candidates.length} stars. Click a marker to add one, or "Add all".`
+          ? `Found ${candidates.length} stars with data. Click a marker to add one, or "Add all".`
           : "No new stars in that region.";
     } catch (e) {
       if (ctrl.signal.aborted) return;
@@ -368,11 +380,19 @@ class App {
       this.skyStatusEl.textContent = `Chart already has ${MAX_PLOTTED} stars.`;
       return;
     }
+    // Show the data panel either way (passing `star` as fallback so the
+    // panel resolves even when the star isn't yet on the chart), but
+    // only add to the chart if we know the star's temperature.
+    this.select(star.id, star);
+    if (star.teff == null) {
+      this.skyStatusEl.textContent =
+        `${star.name}: temperature unknown — cannot place on the chart.`;
+      return;
+    }
     if (!this.plotted.has(star.id)) {
       this.plotted.set(star.id, plotStar(star));
     }
     this.skyViewer.removeCandidate(star.id);
-    this.select(star.id);
     this.refresh();
     this.skyStatusEl.textContent = `Added ${star.name}.`;
   }
@@ -384,8 +404,13 @@ class App {
       return;
     }
     let added = 0;
+    let skipped = 0;
     for (const star of candidates) {
       if (this.plotted.size >= MAX_PLOTTED) break;
+      if (star.teff == null) {
+        skipped++;
+        continue;
+      }
       if (!this.plotted.has(star.id)) {
         this.plotted.set(star.id, plotStar(star));
         added++;
@@ -393,7 +418,10 @@ class App {
     }
     this.skyViewer.clearCandidates();
     this.refresh();
-    this.skyStatusEl.textContent = `Added ${added} stars from search results.`;
+    this.skyStatusEl.textContent =
+      skipped > 0
+        ? `Added ${added} stars; skipped ${skipped} with unknown temperature.`
+        : `Added ${added} stars from search results.`;
   }
 
   private save(name: string): void {

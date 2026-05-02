@@ -91,6 +91,45 @@ export class Controls {
         },
       ),
     );
+    // Label-format and unit toggles only make sense for the luminosity
+    // axis. Absolute-magnitude ticks are always plain numbers.
+    if (this.axes.yMode === "luminosity") {
+      axesGroup.appendChild(
+        this.makeSelect(
+          "style",
+          [
+            ["decimals", "decimals (0.1)"],
+            ["fractions", "fractions (1/10)"],
+            ["powers", "powers (10⁻¹)"],
+          ],
+          this.axes.yLabelFormat ?? "decimals",
+          (v) => {
+            this.axes = {
+              ...this.axes,
+              yLabelFormat: v as AxisConfig["yLabelFormat"],
+            };
+            this.cb.onAxesChange(this.axes);
+          },
+        ),
+      );
+      axesGroup.appendChild(
+        this.makeSelect(
+          "units",
+          [
+            ["solar", "× the Sun"],
+            ["watts", "watts"],
+          ],
+          this.axes.yUnit ?? "solar",
+          (v) => {
+            this.axes = {
+              ...this.axes,
+              yUnit: v as AxisConfig["yUnit"],
+            };
+            this.cb.onAxesChange(this.axes);
+          },
+        ),
+      );
+    }
     axesGroup.appendChild(
       this.makeSelect(
         "X",

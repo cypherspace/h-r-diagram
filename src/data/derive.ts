@@ -77,6 +77,22 @@ export function luminositySolar(absMagV: number, teffK?: number): number {
   return Math.pow(10, (M_BOL_SUN - mBol) / 2.5);
 }
 
+// Solar effective temperature, K. Used as the reference for radius
+// ratios via the rearranged Stefan-Boltzmann law.
+export const T_SUN_K = 5778;
+
+// Estimate radius in solar units from luminosity (in solar units) and
+// effective temperature. Rearranges Stefan-Boltzmann: L = 4πR²σT⁴, so
+//   R / R_☉ = √(L / L_☉) · (T_☉ / T)²
+// Returns NaN for non-positive inputs. Educational use only — for real
+// stars the radius is constrained by interferometry / asteroseismology
+// rather than this back-of-envelope formula.
+export function radiusSolarFromLumTeff(lumSolar: number, teffK: number): number {
+  if (!Number.isFinite(lumSolar) || lumSolar <= 0) return NaN;
+  if (!Number.isFinite(teffK) || teffK <= 0) return NaN;
+  return Math.sqrt(lumSolar) * Math.pow(T_SUN_K / teffK, 2);
+}
+
 // Ballesteros 2012, valid for main-sequence stars roughly 3000-10000 K.
 export function tempFromBV(bv: number): number {
   return (
@@ -99,12 +115,16 @@ export function bvFromTemp(teff: number): number {
 }
 
 export function plotStar(star: Star): PlottedStar {
+  if (star.teff == null) {
+    throw new Error(`plotStar called on star without teff: ${star.id}`);
+  }
   const absMag = absoluteMagnitude(star.mV, star.distancePc);
   // Prefer a published bolometric luminosity if the curated record has
   // one; otherwise compute from m_V using the BC table.
   const lum = star.luminosity ?? luminositySolar(absMag, star.teff);
   return {
     ...star,
+    teff: star.teff,
     absMag,
     luminositySolar: lum,
   };

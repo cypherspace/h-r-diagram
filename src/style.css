@@ -22,13 +22,20 @@ html, body {
 }
 
 #app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-areas:
+    "header  actions"
+    "main    main";
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
   height: 100vh;
   padding: 0.75rem;
   gap: 0.75rem;
   overflow: hidden;
 }
+header { grid-area: header; }
+#action-bar { grid-area: actions; align-self: center; }
+main { grid-area: main; }
 
 header {
   display: flex;
@@ -50,7 +57,8 @@ header h1 {
   gap: 0.5rem;
 }
 #tour-btn,
-#how-btn {
+#how-btn,
+#how-we-know-btn {
   background: var(--panel);
   color: var(--fg);
   border: 1px solid var(--accent);
@@ -61,8 +69,10 @@ header h1 {
   font-family: inherit;
 }
 #tour-btn:hover,
-#how-btn:hover { background: #243057; }
+#how-btn:hover,
+#how-we-know-btn:hover { background: #243057; }
 #how-btn { border-color: var(--accent-2); color: var(--accent-2); }
+#how-we-know-btn { border-color: #9be7c4; color: #9be7c4; }
 
 /* "How it works" modal */
 .how-overlay {
@@ -112,6 +122,12 @@ header h1 {
   font-weight: 600;
   margin-right: 0.15rem;
 }
+.how-modal a,
+.how-modal a:visited {
+  color: var(--accent-2);
+  text-decoration: underline;
+}
+.how-modal a:hover { color: var(--accent); }
 .how-close {
   position: absolute;
   top: 0.6rem;
@@ -129,6 +145,103 @@ header h1 {
 }
 .how-close:hover { color: var(--fg); background: var(--panel-2); }
 
+/* "How we know" panel: collapsible <details> sections */
+.hwk-section {
+  border-top: 1px solid var(--grid);
+  padding: 0.6rem 0;
+}
+.hwk-section:first-of-type { border-top: none; }
+.hwk-section > summary {
+  cursor: pointer;
+  color: var(--accent-2);
+  font-size: 1rem;
+  font-weight: 600;
+  list-style: none;
+  padding: 0.2rem 0;
+  user-select: none;
+}
+.hwk-section > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1rem;
+  color: var(--muted);
+  transition: transform 0.15s ease-out;
+}
+.hwk-section[open] > summary::before { transform: rotate(90deg); }
+.hwk-body { padding: 0.4rem 0 0.2rem 1rem; }
+.hwk-body p { font-size: 0.9rem; line-height: 1.55; margin: 0 0 0.6rem; }
+.hwk-body ol, .hwk-body ul {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin: 0 0 0.6rem 1.2rem;
+  padding: 0;
+}
+.hwk-body li { margin-bottom: 0.25rem; }
+.hwk-body strong { color: var(--accent); }
+.hwk-eq {
+  margin: 0.4rem 0 0.8rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--panel-2);
+  border-left: 3px solid var(--accent-2);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.92rem;
+  color: var(--fg);
+  border-radius: 0 4px 4px 0;
+}
+.hwk-eq strong { color: var(--accent); }
+.hwk-fig {
+  margin: 0.6rem 0;
+  padding: 0;
+}
+.hwk-fig svg {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  background: #0c1326;
+}
+.hwk-fig figcaption {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+  line-height: 1.45;
+}
+.hwk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0.8rem;
+}
+.hwk-table th,
+.hwk-table td {
+  border-bottom: 1px solid var(--grid);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+.hwk-table th { color: var(--muted); font-weight: 500; }
+
+/* Provenance badge in the data panel */
+.provenance-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+.provenance-badge.published {
+  background: rgba(155, 231, 196, 0.18);
+  color: #9be7c4;
+  border: 1px solid rgba(155, 231, 196, 0.45);
+}
+.provenance-badge.derived {
+  background: rgba(139, 149, 184, 0.15);
+  color: var(--muted);
+  border: 1px solid rgba(139, 149, 184, 0.35);
+}
+
 main {
   display: grid;
   grid-template-columns: 1fr 1fr 280px;
@@ -142,8 +255,48 @@ main {
   #info-panel { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  main { grid-template-columns: 1fr; }
+  /* Mobile: single column, panes stack top-down, page scrolls
+     vertically, and the action bar (How it works / How we know / Tour)
+     drops to the very bottom. */
+  html, body {
+    overflow: auto;
+    height: auto;
+  }
+  #app {
+    grid-template-areas:
+      "header"
+      "main"
+      "actions";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  main {
+    grid-template-columns: 1fr;
+    /* Each pane gets its own height; no auto-fitting to viewport. */
+  }
   #info-panel { grid-column: auto; }
+  /* On mobile we want the sky and the chart to be reasonably tall but
+     not consume the entire screen — the user needs to be able to
+     scroll past them to reach controls below. */
+  #sky-panel #aladin-lite-div { min-height: 60vh; }
+  #diagram-panel #diagram { min-height: 50vh; }
+  /* Aside (info panel) is shorter and sized to its contents. */
+  aside { overflow-y: visible; }
+  /* Action bar at the bottom — full-width row of buttons. */
+  #action-bar {
+    align-self: stretch;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 0.5rem 0 0.25rem;
+    border-top: 1px solid var(--grid);
+  }
+  /* Slightly larger header spacing on mobile so the title doesn't
+     crowd the controls. */
+  header h1 { font-size: 1.15rem; }
+  .subtitle { font-size: 0.78rem; }
 }
 
 section, aside {
@@ -189,6 +342,28 @@ h2 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--accent); }
 }
 #sky-controls button { cursor: pointer; }
 #sky-controls button:hover { background: #243057; }
+
+/* The Search button is the primary action: pressing it kicks off the
+   whole "find stars in the visible region" flow. Make it visually
+   distinct from the "Add all" / "Clear results" buttons that act on
+   already-fetched candidates. */
+#sky-controls button.primary {
+  background: var(--accent);
+  color: #0c1326;
+  border-color: var(--accent);
+  font-weight: 600;
+  padding: 0.3rem 0.85rem;
+}
+#sky-controls button.primary:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+.control-divider {
+  width: 1px;
+  height: 1.4rem;
+  background: var(--grid);
+  margin: 0 0.2rem;
+}
 #sky-controls input[type="number"] { width: 4rem; }
 #sky-controls input[type="text"] { width: 9rem; }
 #sky-controls input[type="checkbox"] {

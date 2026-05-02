@@ -22,10 +22,52 @@ export class HRDiagram {
   private svg!: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private root!: d3.Selection<SVGGElement, unknown, null, undefined>;
   private resizeObserver: ResizeObserver;
-  private zoomBehaviour: d3.ZoomBehavior<SVGSVGElement, unknown>;
-  private currentTransform: d3.ZoomTransform = d3.zoomIdentity;
+  // X and Y transforms are tracked separately so the user can zoom one
+  // axis without affecting the other (mousedown on the axis tick area
+  // then scroll). Both default to identity; uniform wheel-zoom over the
+  // plot area scales both at once.
+  private xTransform: d3.ZoomTransform = d3.zoomIdentity;
+  private yTransform: d3.ZoomTransform = d3.zoomIdentity;
+  private heldAxis: "x" | "y" | null = null;
+  private dragStart: {
+    px: number;
+    py: number;
+    xT: d3.ZoomTransform;
+    yT: d3.ZoomTransform;
+  } | null = null;
   private dotSize: number;
   private clipId: string;
+  // Last computed plot inner dimensions, used by the zoom-button helpers
+  // so they can scale around the plot centre.
+  private innerW = 0;
+  private innerH = 0;
+
+  // Stable handlers so we can add/remove from window cleanly.
+  private onWindowMouseUp = () => {
+    if (this.heldAxis !== null) {
+      this.heldAxis = null;
+      document.body.style.cursor = "";
+    }
+    this.dragStart = null;
+  };
+  private onWindowMouseMove = (event: MouseEvent) => {
+    if (!this.dragStart) return;
+    const node = this.svg.node();
+    if (!node) return;
+    const [mx, my] = d3.pointer(event, node);
+    const margin = HRDiagram.MARGIN;
+    const px = mx - margin.left;
+    const py = my - margin.top;
+    const dx = px - this.dragStart.px;
+    const dy = py - this.dragStart.py;
+    this.xTransform = d3.zoomIdentity
+      .translate(this.dragStart.xT.x + dx, 0)
+      .scale(this.dragStart.xT.k);
+    this.yTransform = d3.zoomIdentity
+      .translate(0, this.dragStart.yT.y + dy)
+      .scale(this.dragStart.yT.k);
+    this.render();
+  };
 
   constructor(opts: HRDiagramOptions) {
     this.container = opts.container;
@@ -40,24 +82,26 @@ export class HRDiagram {
       .attr("preserveAspectRatio", "none");
     this.root = this.svg.append("g");
 
-    this.zoomBehaviour = d3
-      .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.5, 100])
-      .filter((event) => {
-        // Allow wheel + drag, but ignore right-click drags so the user can
-        // still right-click to copy / inspect.
-        if (event.type === "mousedown" && event.button !== 0) return false;
-        return true;
-      })
-      .on("zoom", (event) => {
-        this.currentTransform = event.transform;
-        this.render();
-      });
-    this.svg.call(this.zoomBehaviour);
+    // Custom wheel handler — replaces the uniform d3.zoom wheel behaviour
+    // so we can support per-axis zoom when an axis is held.
+    this.svg
+      .node()
+      ?.addEventListener("wheel", this.onSvgWheel, { passive: false });
+    // Drag-to-pan on the plot area.
+    this.svg.on("mousedown", (event: MouseEvent) => this.onSvgMouseDown(event));
+    window.addEventListener("mousemove", this.onWindowMouseMove);
+    window.addEventListener("mouseup", this.onWindowMouseUp);
 
     this.resizeObserver = new ResizeObserver(() => this.render());
     this.resizeObserver.observe(this.container);
   }
+
+  private static readonly MARGIN = {
+    top: 20,
+    right: 20,
+    bottom: 50,
+    left: 70,
+  } as const;
 
   setStars(stars: PlottedStar[]): void {
     this.stars = stars;
@@ -84,28 +128,94 @@ export class HRDiagram {
   }
 
   resetZoom(): void {
-    this.svg
-      .transition()
-      .duration(300)
-      .call(this.zoomBehaviour.transform, d3.zoomIdentity);
+    this.xTransform = d3.zoomIdentity;
+    this.yTransform = d3.zoomIdentity;
+    this.render();
   }
 
   zoomIn(): void {
-    this.svg
-      .transition()
-      .duration(200)
-      .call(this.zoomBehaviour.scaleBy, 1.5);
+    this.scaleBoth(1.5);
   }
 
   zoomOut(): void {
-    this.svg
-      .transition()
-      .duration(200)
-      .call(this.zoomBehaviour.scaleBy, 1 / 1.5);
+    this.scaleBoth(1 / 1.5);
+  }
+
+  private scaleBoth(factor: number): void {
+    const cx = this.innerW / 2;
+    const cy = this.innerH / 2;
+    this.xTransform = scaleAroundX(this.xTransform, cx, factor);
+    this.yTransform = scaleAroundY(this.yTransform, cy, factor);
+    this.render();
+  }
+
+  // Wheel handler (arrow function to keep `this` and a stable reference
+  // for addEventListener / removeEventListener).
+  private onSvgWheel = (event: WheelEvent): void => {
+    event.preventDefault();
+    const node = this.svg.node();
+    if (!node) return;
+    const [mx, my] = d3.pointer(event, node);
+    const margin = HRDiagram.MARGIN;
+    const px = mx - margin.left;
+    const py = my - margin.top;
+    if (px < 0 && this.heldAxis !== "x") {
+      // Wheel happened over the y-axis tick area: treat as a y-only zoom.
+      this.heldAxis = "y";
+    } else if (py > this.innerH && this.heldAxis !== "y") {
+      // Wheel below the plot: treat as an x-only zoom (over x-axis).
+      this.heldAxis = "x";
+    }
+    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+    if (this.heldAxis !== "y") {
+      this.xTransform = scaleAroundX(this.xTransform, px, factor);
+    }
+    if (this.heldAxis !== "x") {
+      this.yTransform = scaleAroundY(this.yTransform, py, factor);
+    }
+    this.render();
+  };
+
+  private onSvgMouseDown(event: MouseEvent): void {
+    if (event.button !== 0) return;
+    const node = this.svg.node();
+    if (!node) return;
+    const [mx, my] = d3.pointer(event, node);
+    const margin = HRDiagram.MARGIN;
+    const px = mx - margin.left;
+    const py = my - margin.top;
+    // Clicking the y-axis tick area (left of plot) → hold y axis.
+    // Clicking the x-axis tick area (below plot) → hold x axis.
+    // Otherwise initiate drag-to-pan.
+    if (px < 0 && py >= 0 && py <= this.innerH) {
+      this.heldAxis = "y";
+      document.body.style.cursor = "ns-resize";
+      event.preventDefault();
+      return;
+    }
+    if (py > this.innerH && px >= 0 && px <= this.innerW) {
+      this.heldAxis = "x";
+      document.body.style.cursor = "ew-resize";
+      event.preventDefault();
+      return;
+    }
+    if (px >= 0 && px <= this.innerW && py >= 0 && py <= this.innerH) {
+      this.dragStart = {
+        px,
+        py,
+        xT: this.xTransform,
+        yT: this.yTransform,
+      };
+      document.body.style.cursor = "grabbing";
+      event.preventDefault();
+    }
   }
 
   destroy(): void {
     this.resizeObserver.disconnect();
+    this.svg.node()?.removeEventListener("wheel", this.onSvgWheel);
+    window.removeEventListener("mousemove", this.onWindowMouseMove);
+    window.removeEventListener("mouseup", this.onWindowMouseUp);
     this.svg.remove();
   }
 
@@ -113,18 +223,20 @@ export class HRDiagram {
     const rect = this.container.getBoundingClientRect();
     const width = Math.max(300, rect.width);
     const height = Math.max(300, rect.height);
-    const margin = { top: 20, right: 20, bottom: 50, left: 70 };
+    const margin = HRDiagram.MARGIN;
     const innerW = width - margin.left - margin.right;
     const innerH = height - margin.top - margin.bottom;
+    this.innerW = innerW;
+    this.innerH = innerH;
 
     this.svg.attr("viewBox", `0 0 ${width} ${height}`);
     this.root.attr("transform", `translate(${margin.left},${margin.top})`);
 
     const baseX = this.makeXScale(innerW);
     const baseY = this.makeYScale(innerH);
-    // d3-zoom rescaleX/Y works on linear, log, and pow scales.
-    const xScale = this.currentTransform.rescaleX(baseX);
-    const yScale = this.currentTransform.rescaleY(baseY);
+    // Per-axis transforms — zoom one axis without disturbing the other.
+    const xScale = this.xTransform.rescaleX(baseX);
+    const yScale = this.yTransform.rescaleY(baseY);
     const xValue = this.xValueFn();
     const yValue = this.yValueFn();
 
@@ -300,8 +412,10 @@ export class HRDiagram {
 
   private makeYAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
     const axis = d3.axisLeft(scale);
-    if (this.axes.yMode === "luminosity" && this.axes.yScale === "log") {
-      axis.ticks(6, "~s");
+    if (this.axes.yMode === "luminosity") {
+      const fmt = this.axes.yLabelFormat ?? "decimals";
+      const unit = this.axes.yUnit ?? "solar";
+      axis.ticks(6).tickFormat((v) => formatLuminosityTick(v as number, fmt, unit));
     } else {
       axis.ticks(8);
     }
@@ -317,8 +431,99 @@ export class HRDiagram {
 
   private yLabel(): string {
     if (this.axes.yMode === "luminosity") {
-      return "Brightness compared to the Sun";
+      return this.axes.yUnit === "watts"
+        ? "Power output (watts)"
+        : "Brightness compared to the Sun";
     }
     return "Absolute magnitude — brighter ↑";
   }
+}
+
+// L_☉ = 3.828 × 10²⁶ W (IAU 2015 nominal solar luminosity).
+const L_SUN_W = 3.828e26;
+
+const SUPERSCRIPTS: Record<string, string> = {
+  "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+  "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+  "-": "⁻", "+": "⁺",
+};
+function toSuperscript(n: number): string {
+  return String(n)
+    .split("")
+    .map((ch) => SUPERSCRIPTS[ch] ?? ch)
+    .join("");
+}
+
+// Round display to 3 sig figs, dropping trailing zeros.
+function trimSig(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  if (n === 0) return "0";
+  const s = n.toPrecision(3);
+  // Strip trailing zeros after a decimal, and the decimal itself if bare.
+  return s.includes(".") ? s.replace(/\.?0+$/, "") : s;
+}
+
+export function formatLuminosityTick(
+  solarValue: number,
+  format: "decimals" | "fractions" | "powers",
+  unit: "solar" | "watts",
+): string {
+  if (!Number.isFinite(solarValue) || solarValue <= 0) return "";
+  const value = unit === "watts" ? solarValue * L_SUN_W : solarValue;
+  // Skip non-decade ticks (within ~5%) when in powers/fractions mode so
+  // we don't get clutter — d3 sometimes adds intermediate ticks like 2,
+  // 5 which look messy with these label styles.
+  const log = Math.log10(value);
+  const isDecade = Math.abs(log - Math.round(log)) < 0.02;
+
+  if (format === "powers") {
+    if (!isDecade) return "";
+    const e = Math.round(log);
+    return `10${toSuperscript(e)}${unit === "watts" ? " W" : ""}`;
+  }
+  if (format === "fractions" && unit === "solar") {
+    if (!isDecade) return "";
+    const e = Math.round(log);
+    if (e === 0) return "1";
+    if (e > 0) return `${10 ** e}`;
+    return `1/${10 ** -e}`;
+  }
+  // Decimals (default), and the watts fallback when fractions is picked.
+  if (unit === "watts") {
+    // Always scientific for watts since values are huge.
+    if (!isDecade) return "";
+    const e = Math.round(log);
+    return `10${toSuperscript(e)} W`;
+  }
+  return trimSig(value);
+}
+
+// Build a new ZoomTransform that scales `transform` around horizontal
+// pixel `pivot` by `factor` (>1 zooms in). Keeps the data value at
+// `pivot` fixed in display coordinates.
+function scaleAroundX(
+  transform: d3.ZoomTransform,
+  pivot: number,
+  factor: number,
+): d3.ZoomTransform {
+  const newK = clampK(transform.k * factor);
+  // d3 ZoomTransform.applyX(plotX) = k * plotX + tx. Holding pivot fixed
+  // for the new transform: newK * plotX_at_pivot + newX = pivot, so
+  // newX = pivot - effectiveFactor * (pivot - transform.x).
+  const effective = newK / transform.k;
+  const newX = pivot - effective * (pivot - transform.x);
+  return d3.zoomIdentity.translate(newX, 0).scale(newK);
+}
+function scaleAroundY(
+  transform: d3.ZoomTransform,
+  pivot: number,
+  factor: number,
+): d3.ZoomTransform {
+  const newK = clampK(transform.k * factor);
+  const effective = newK / transform.k;
+  const newY = pivot - effective * (pivot - transform.y);
+  return d3.zoomIdentity.translate(0, newY).scale(newK);
+}
+function clampK(k: number): number {
+  return Math.max(0.5, Math.min(100, k));
 }

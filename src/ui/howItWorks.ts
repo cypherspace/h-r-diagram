@@ -26,6 +26,29 @@ const STEPS: Section = {
   ],
 };
 
+const SKY_PICTURES: Section = {
+  heading: "What you're seeing",
+  paragraphs: [
+    "The \"Sky picture\" dropdown switches between four real surveys of the sky. They differ in how the photo was taken and in how much sky they cover.",
+    ["DSS2 (colour).", "Digitized Sky Survey 2. These are images from photographic plates (like photographic film, but the picture taken directly onto glass) taken in the 1980s and 90s. These have been tinted blue and red to look natural. But you might see that the map looks bluer or redder in certain places, which probably depends on the way that the particular plate was processed. Using photos of the entire sky, a composite image is made that allows us to look at the entire sky as if it was all one image. But it's a lower resolution than modern, digital images. Most of the artefacts in the app come from DSS2 plates."],
+    ["PanSTARRS.", "A modern wide-field digital survey covering all the sky above the northern hemisphere and everything up to about 30 degrees below the Equator. Cleaner, deeper, and sharper than DSS, but missing the southernmost sky."],
+    ["SDSS.", "Sloan Digital Sky Survey. Very deep digital imaging — so deep that if you zoom in far enough, you will see very distant galaxies — but it only covers about a third of the sky (mostly the northern galactic cap). Outside its survey data, you'll just see grey."],
+    ["2MASS (infrared).", "A survey using infrared detectors instead of visible light. Cool red stars look unusually bright and hot blue stars look faint — opposite to your eye. Useful for seeing dust-shrouded objects."],
+  ],
+};
+
+const ARTEFACTS: Section = {
+  heading: "Why are there strange marks?",
+  paragraphs: [
+    "Real telescope photos are not perfect. You'll often see:",
+    ["Diffraction spikes.", "Four (or six) lines of light radiating out from very bright stars. They're caused by light bending around the support struts holding the telescope's secondary mirror."],
+    ["Saturation halos.", "Fuzzy bright patches around the brightest stars, where the detector is overwhelmed and \"blooms\"."],
+    ["Black scorch marks.", "On photographic plates, the centre of an extremely bright star can saturate the emulsion so completely that it scans as black. The big black spot in the centre of a bright star is one of these."],
+    ["Coloured stripes or rectangles.", "The surveys are stitched from many smaller images. Where two tiles meet, or where one filter is missing, you can see colour mismatches."],
+    "If the picture looks strange around a bright star, try switching to a different survey to see what's really there.",
+  ],
+};
+
 const TERMS: Section = {
   heading: "Words to know",
   paragraphs: [
@@ -43,7 +66,7 @@ const TERMS: Section = {
   ],
 };
 
-const SECTIONS: Section[] = [FLOW, STEPS, TERMS];
+const SECTIONS: Section[] = [FLOW, STEPS, SKY_PICTURES, ARTEFACTS, TERMS];
 
 export class HowItWorks {
   private overlay?: HTMLElement;
