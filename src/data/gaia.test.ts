@@ -79,28 +79,26 @@ describe("gaiaRowToStar", () => {
 });
 
 describe("parseCsv", () => {
-  // VizieR returns CSV headers matching the SELECT aliases. Every
-  // value-bearing row should round-trip through parseCsv into a
-  // populated GaiaRow with a non-empty source_id.
-  it("accepts the production aliased headers and preserves source_id", () => {
+  // The production cone/box query returns un-aliased gaiadr3 column
+  // names (Source / RA_ICRS / DE_ICRS / Plx / e_Plx / Gmag / bprp). The
+  // teff/lum-flame fields are populated by a separate paramsup query.
+  it("preserves source_id from the un-aliased gaiadr3 header", () => {
     const csv = [
-      "source_id,ra,dec,plx,e_plx,gmag,bprp,teff_pub,lum_flame",
-      "1234567890,101.287,-16.716,379.21,1.9,1.46,0.0,9940,25.4",
-      "9876543210,250.4,-26.7,5.5,0.5,12.1,1.2,,",
+      "Source,RA_ICRS,DE_ICRS,Plx,e_Plx,Gmag,bprp",
+      "1234567890,101.287,-16.716,379.21,1.9,1.46,0.0",
+      "9876543210,250.4,-26.7,5.5,0.5,12.1,1.2",
     ].join("\n");
     const rows = parseCsv(csv);
     expect(rows).toHaveLength(2);
     expect(rows[0].source_id).toBe("1234567890");
     expect(rows[0].parallax_mas).toBeCloseTo(379.21, 5);
-    expect(rows[0].teff_k).toBe(9940);
-    expect(rows[0].lum_flame_solar).toBeCloseTo(25.4, 3);
+    expect(rows[0].teff_k).toBeNull();
+    expect(rows[0].lum_flame_solar).toBeNull();
     expect(rows[1].source_id).toBe("9876543210");
-    expect(rows[1].teff_k).toBeNull();
-    expect(rows[1].lum_flame_solar).toBeNull();
   });
-  it("accepts the legacy unaliased headers as a fallback", () => {
+  it("also accepts aliased headers (forward-compat for future joins)", () => {
     const csv = [
-      "Source,RA_ICRS,DE_ICRS,Plx,e_Plx,Gmag,bprp",
+      "source_id,ra,dec,plx,e_plx,gmag,bprp",
       "1234567890,101.287,-16.716,379.21,1.9,1.46,0.0",
     ].join("\n");
     const rows = parseCsv(csv);
@@ -108,12 +106,29 @@ describe("parseCsv", () => {
   });
   it("skips rows with missing parallax / mag", () => {
     const csv = [
-      "source_id,ra,dec,plx,e_plx,gmag,bprp,teff_pub,lum_flame",
-      "abc,0,0,,1,5,0.5,,",
-      "def,0,0,5,,5,0.5,,",
-      "ghi,0,0,5,1,,0.5,,",
+      "Source,RA_ICRS,DE_ICRS,Plx,e_Plx,Gmag,bprp",
+      "abc,0,0,,1,5,0.5",
+      "def,0,0,5,,5,0.5",
+      "ghi,0,0,5,1,,0.5",
     ].join("\n");
     expect(parseCsv(csv)).toHaveLength(0);
+  });
+});
+
+describe("parseParamsupCsv", () => {
+  it("returns a Map keyed by Source", async () => {
+    const { parseParamsupCsv } = await import("./gaia");
+    const csv = [
+      "Source,Teff,lum_flame",
+      "1234567890,9940,25.4",
+      "9876543210,,",
+    ].join("\n");
+    const m = parseParamsupCsv(csv);
+    expect(m.size).toBe(2);
+    expect(m.get("1234567890")?.teff).toBe(9940);
+    expect(m.get("1234567890")?.lum).toBeCloseTo(25.4, 3);
+    expect(m.get("9876543210")?.teff).toBeNull();
+    expect(m.get("9876543210")?.lum).toBeNull();
   });
 });
 

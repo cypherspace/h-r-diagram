@@ -34,11 +34,15 @@ export class GaiaError extends Error {
 }
 
 // VizieR Gaia DR3 main catalog: I/355/gaiadr3.
-// We compute BP-RP from BPmag and RPmag (avoids the hyphenated column name)
-// and parallax_over_error from Plx / e_Plx. Joined with the astrophysical-
-// parameters supplement (I/355/paramsup) to pick up published Teff and
-// FLAME luminosity — when present we use those directly rather than
-// deriving from BP-RP.
+// We compute BP-RP from BPmag and RPmag (avoids the hyphenated column
+// name) and parallax_over_error from Plx / e_Plx. We DON'T attempt a
+// JOIN with paramsup in the same query — VizieR's ADQL parser rejects
+// joins involving CONTAINS() with "1 unresolved identifier!" errors
+// because both tables share columns named Source, RA_ICRS, DE_ICRS,
+// and qualified references like g."RA_ICRS" inside POINT() trip the
+// parser even though they should be unambiguous. Instead we run a
+// second, focused query against paramsup using the source IDs from
+// the cone search; see fetchParamsup() below.
 function buildConeAdql(
   raDeg: number,
   decDeg: number,
@@ -47,25 +51,21 @@ function buildConeAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  g."Source" AS source_id, g."RA_ICRS" AS ra, g."DE_ICRS" AS dec,
-  g."Plx" AS plx, g."e_Plx" AS e_plx, g."Gmag" AS gmag,
-  (g."BPmag" - g."RPmag") AS bprp,
-  p."Teff" AS teff_pub,
-  p."Lum-Flame" AS lum_flame
-FROM "I/355/gaiadr3" g
-LEFT OUTER JOIN "I/355/paramsup" p ON g."Source" = p."Source"
+  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
+  ("BPmag" - "RPmag") AS bprp
+FROM "I/355/gaiadr3"
 WHERE 1 = CONTAINS(
-    POINT('ICRS', g."RA_ICRS", g."DE_ICRS"),
+    POINT('ICRS', "RA_ICRS", "DE_ICRS"),
     CIRCLE('ICRS', ${raDeg}, ${decDeg}, ${radiusDeg})
   )
-  AND g."Plx" IS NOT NULL
-  AND g."Plx" > 0
-  AND g."e_Plx" IS NOT NULL
-  AND g."e_Plx" > 0
-  AND (g."Plx" / g."e_Plx") > 5
-  AND g."Gmag" IS NOT NULL
-  AND g."Gmag" < ${magLimit}
-ORDER BY gmag ASC`;
+  AND "Plx" IS NOT NULL
+  AND "Plx" > 0
+  AND "e_Plx" IS NOT NULL
+  AND "e_Plx" > 0
+  AND ("Plx" / "e_Plx") > 5
+  AND "Gmag" IS NOT NULL
+  AND "Gmag" < ${magLimit}
+ORDER BY "Gmag" ASC`;
 }
 
 function buildBoxAdql(
@@ -77,23 +77,29 @@ function buildBoxAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  g."Source" AS source_id, g."RA_ICRS" AS ra, g."DE_ICRS" AS dec,
-  g."Plx" AS plx, g."e_Plx" AS e_plx, g."Gmag" AS gmag,
-  (g."BPmag" - g."RPmag") AS bprp,
-  p."Teff" AS teff_pub,
-  p."Lum-Flame" AS lum_flame
-FROM "I/355/gaiadr3" g
-LEFT OUTER JOIN "I/355/paramsup" p ON g."Source" = p."Source"
-WHERE g."RA_ICRS" BETWEEN ${raMin} AND ${raMax}
-  AND g."DE_ICRS" BETWEEN ${decMin} AND ${decMax}
-  AND g."Plx" IS NOT NULL
-  AND g."Plx" > 0
-  AND g."e_Plx" IS NOT NULL
-  AND g."e_Plx" > 0
-  AND (g."Plx" / g."e_Plx") > 5
-  AND g."Gmag" IS NOT NULL
-  AND g."Gmag" < ${magLimit}
-ORDER BY gmag ASC`;
+  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
+  ("BPmag" - "RPmag") AS bprp
+FROM "I/355/gaiadr3"
+WHERE "RA_ICRS" BETWEEN ${raMin} AND ${raMax}
+  AND "DE_ICRS" BETWEEN ${decMin} AND ${decMax}
+  AND "Plx" IS NOT NULL
+  AND "Plx" > 0
+  AND "e_Plx" IS NOT NULL
+  AND "e_Plx" > 0
+  AND ("Plx" / "e_Plx") > 5
+  AND "Gmag" IS NOT NULL
+  AND "Gmag" < ${magLimit}
+ORDER BY "Gmag" ASC`;
+}
+
+function buildParamsupAdql(sourceIds: string[]): string {
+  // ADQL doesn't reliably support large IN clauses, but a few hundred
+  // IDs is fine. The Source column is BIGINT in paramsup, so emit them
+  // as raw integers (no quotes).
+  const list = sourceIds.join(",");
+  return `SELECT "Source", "Teff", "Lum-Flame" AS lum_flame
+FROM "I/355/paramsup"
+WHERE "Source" IN (${list})`;
 }
 
 export async function queryConeSearch(
@@ -109,7 +115,9 @@ export async function queryConeSearch(
     options.topN ?? 50,
     options.magLimit ?? 18,
   );
-  return runAdql(adql, options.signal);
+  const rows = await runAdql(adql, options.signal);
+  await enrichWithParamsup(rows, options.signal);
+  return rows;
 }
 
 export async function queryBox(
@@ -127,7 +135,37 @@ export async function queryBox(
     options.topN ?? 200,
     options.magLimit ?? 18,
   );
-  return runAdql(adql, options.signal);
+  const rows = await runAdql(adql, options.signal);
+  await enrichWithParamsup(rows, options.signal);
+  return rows;
+}
+
+// Mutates `rows` to fill in teff_k and lum_flame_solar from paramsup
+// where Gaia has published those values. Failures here are non-fatal:
+// the cone search's data is still useful even without published Teff /
+// luminosity (the caller falls back to BP-RP-derived values).
+async function enrichWithParamsup(
+  rows: GaiaRow[],
+  signal?: AbortSignal,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const ids = rows.map((r) => r.source_id).filter(Boolean);
+  if (ids.length === 0) return;
+  try {
+    const adql = buildParamsupAdql(ids);
+    const params = await runParamsup(adql, signal);
+    if (params.size === 0) return;
+    for (const r of rows) {
+      const p = params.get(r.source_id);
+      if (!p) continue;
+      if (p.teff != null) r.teff_k = p.teff;
+      if (p.lum != null) r.lum_flame_solar = p.lum;
+    }
+  } catch (e) {
+    // Don't fail the whole search if paramsup is busy — log and move on.
+    if (signal?.aborted) throw e;
+    console.warn("[gaia] paramsup enrichment failed:", e);
+  }
 }
 
 async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
@@ -192,11 +230,76 @@ async function runAdqlOnce(
       err.transient = true;
       throw err;
     }
-    throw new GaiaError(
-      `VizieR returned HTTP ${res.status}. ${text.slice(0, 200)}`,
+    // Pull out the most informative bit of the VOTable XML (the
+    // QUERY_STATUS message) so the surfaced error is actionable rather
+    // than a wall of envelope.
+    const m = text.match(
+      /QUERY_STATUS"\s+value="ERROR">\s*([\s\S]*?)\s*<\/INFO>/,
     );
+    const detail = m?.[1] ?? text.slice(0, 400);
+    throw new GaiaError(`VizieR returned HTTP ${res.status}. ${detail}`);
   }
   return parseCsv(text);
+}
+
+// Parse the much simpler CSV that paramsup returns ("Source", "Teff",
+// "lum_flame"). Returns a Map keyed by source_id string.
+async function runParamsup(
+  adql: string,
+  signal?: AbortSignal,
+): Promise<Map<string, { teff: number | null; lum: number | null }>> {
+  const params = new URLSearchParams({
+    REQUEST: "doQuery",
+    LANG: "ADQL",
+    FORMAT: "csv",
+    QUERY: adql,
+  });
+  const res = await fetch(TAP_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+    signal,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new GaiaError(
+      `VizieR (paramsup) returned HTTP ${res.status}. ${text.slice(0, 200)}`,
+    );
+  }
+  return parseParamsupCsv(text);
+}
+
+export function parseParamsupCsv(
+  text: string,
+): Map<string, { teff: number | null; lum: number | null }> {
+  const out = new Map<string, { teff: number | null; lum: number | null }>();
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return out;
+  const headers = lines[0].split(",").map((h) => h.trim());
+  const idx = (...candidates: string[]) => {
+    for (const c of candidates) {
+      const i = headers.findIndex((h) => h.toLowerCase() === c.toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+  const iSource = idx("Source", "source");
+  const iTeff = idx("Teff", "teff");
+  const iLum = idx("lum_flame", "Lum-Flame");
+  if (iSource < 0) return out;
+  for (let r = 1; r < lines.length; r++) {
+    const cells = splitCsvLine(lines[r]);
+    if (cells.length < headers.length) continue;
+    const id = cells[iSource];
+    if (!id) continue;
+    const teff = iTeff >= 0 ? num(cells[iTeff]) : null;
+    const lum = iLum >= 0 ? num(cells[iLum]) : null;
+    out.set(id, { teff, lum });
+  }
+  return out;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -232,17 +335,17 @@ function parseCsv(text: string): GaiaRow[] {
     }
     return -1;
   };
-  // VizieR's ADQL parser rejects unaliased qualified columns when both
-  // joined tables have the same column name. We alias every SELECT
-  // entry, so headers come back as source_id / ra / dec / plx / e_plx /
-  // gmag / bprp / teff_pub / lum_flame. The original (unaliased) names
-  // are kept as fallbacks for safety / future-proofing.
-  const iSource = idx("source_id", "Source", "source");
-  const iRa = idx("ra", "RA_ICRS", "ra_icrs", "RAJ2000");
-  const iDec = idx("dec", "DE_ICRS", "de_icrs", "DEJ2000");
-  const iPlx = idx("plx", "Plx", "parallax");
-  const iEPlx = idx("e_plx", "e_Plx");
-  const iG = idx("gmag", "Gmag", "phot_g_mean_mag");
+  // The cone/box query returns gaiadr3 columns un-aliased; CSV headers
+  // are Source / RA_ICRS / DE_ICRS / Plx / e_Plx / Gmag / bprp. The
+  // teff/lum-flame fields are filled in later by the paramsup query
+  // (enrichWithParamsup) — they don't appear in this CSV. Keep alias
+  // names as fallbacks in case we ever go back to a JOIN.
+  const iSource = idx("Source", "source", "source_id");
+  const iRa = idx("RA_ICRS", "ra_icrs", "ra", "RAJ2000");
+  const iDec = idx("DE_ICRS", "de_icrs", "dec", "DEJ2000");
+  const iPlx = idx("Plx", "plx", "parallax");
+  const iEPlx = idx("e_Plx", "e_plx");
+  const iG = idx("Gmag", "gmag", "phot_g_mean_mag");
   const iBpRp = idx("bprp", "BP-RP", "bp_rp");
   const iTeffPub = idx("teff_pub", "Teff", "teff");
   const iLumFlame = idx("lum_flame", "Lum-Flame", "lumflame");
