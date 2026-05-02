@@ -4,3 +4,8 @@ node_modules
 .vite
 *.tsbuildinfo
 vite.config.js
+
+# Firebase local artefacts (firebase.json + .firebaserc are tracked)
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
