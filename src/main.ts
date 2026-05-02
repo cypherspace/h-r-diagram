@@ -274,11 +274,15 @@ class App {
     this.refresh();
   }
 
-  private select(id: string | null): void {
+  private select(id: string | null, fallback?: Star): void {
     this.selectedId = id;
     this.diagram.setSelected(id);
     if (id) {
-      const s = this.plotted.get(id) ?? findStarById(id);
+      // Try the chart, then the curated sample sets, then the fallback
+      // (a freshly-clicked Gaia candidate from the sky map that isn't
+      // on the chart yet). Without the fallback, clicking a candidate
+      // marker just after a search showed nothing in the data panel.
+      const s = this.plotted.get(id) ?? findStarById(id) ?? fallback;
       if (s) {
         this.dataPanel.show(s);
         // For Gaia stars, ask SIMBAD whether the source has a friendlier
@@ -376,9 +380,10 @@ class App {
       this.skyStatusEl.textContent = `Chart already has ${MAX_PLOTTED} stars.`;
       return;
     }
-    // Show the data panel either way, but only add to the chart if we
-    // know the star's temperature.
-    this.select(star.id);
+    // Show the data panel either way (passing `star` as fallback so the
+    // panel resolves even when the star isn't yet on the chart), but
+    // only add to the chart if we know the star's temperature.
+    this.select(star.id, star);
     if (star.teff == null) {
       this.skyStatusEl.textContent =
         `${star.name}: temperature unknown — cannot place on the chart.`;

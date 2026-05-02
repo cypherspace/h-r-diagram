@@ -233,7 +233,7 @@ export class HowWeKnow {
     );
     const gaiaLink = document.createElement("a");
     gaiaLink.href =
-      "https://www.esa.int/Science_Exploration/Space_Science/Gaia";
+      "https://www.esa.int/Science_Exploration/Space_Science/Gaia/Gaia_overview";
     gaiaLink.target = "_blank";
     gaiaLink.rel = "noopener noreferrer";
     gaiaLink.textContent = "click here";

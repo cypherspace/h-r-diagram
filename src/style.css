@@ -22,13 +22,20 @@ html, body {
 }
 
 #app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-areas:
+    "header  actions"
+    "main    main";
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
   height: 100vh;
   padding: 0.75rem;
   gap: 0.75rem;
   overflow: hidden;
 }
+header { grid-area: header; }
+#action-bar { grid-area: actions; align-self: center; }
+main { grid-area: main; }
 
 header {
   display: flex;
@@ -248,8 +255,48 @@ main {
   #info-panel { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  main { grid-template-columns: 1fr; }
+  /* Mobile: single column, panes stack top-down, page scrolls
+     vertically, and the action bar (How it works / How we know / Tour)
+     drops to the very bottom. */
+  html, body {
+    overflow: auto;
+    height: auto;
+  }
+  #app {
+    grid-template-areas:
+      "header"
+      "main"
+      "actions";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  main {
+    grid-template-columns: 1fr;
+    /* Each pane gets its own height; no auto-fitting to viewport. */
+  }
   #info-panel { grid-column: auto; }
+  /* On mobile we want the sky and the chart to be reasonably tall but
+     not consume the entire screen — the user needs to be able to
+     scroll past them to reach controls below. */
+  #sky-panel #aladin-lite-div { min-height: 60vh; }
+  #diagram-panel #diagram { min-height: 50vh; }
+  /* Aside (info panel) is shorter and sized to its contents. */
+  aside { overflow-y: visible; }
+  /* Action bar at the bottom — full-width row of buttons. */
+  #action-bar {
+    align-self: stretch;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 0.5rem 0 0.25rem;
+    border-top: 1px solid var(--grid);
+  }
+  /* Slightly larger header spacing on mobile so the title doesn't
+     crowd the controls. */
+  header h1 { font-size: 1.15rem; }
+  .subtitle { font-size: 0.78rem; }
 }
 
 section, aside {

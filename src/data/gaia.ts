@@ -170,10 +170,11 @@ async function enrichWithParamsup(
 
 async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
   // VizieR's TAP service is shared infrastructure and occasionally
-  // returns 503 ("TAP service too busy"). Retry once after a short
-  // wait — the second attempt almost always succeeds. Beyond that,
-  // surface a friendly message rather than the raw VOTable error XML.
-  const MAX_ATTEMPTS = 2;
+  // glitches — 503 "service too busy", 400 "1 unresolved identifier"
+  // (a server-side parser hiccup, not a real syntax error), etc. Retry
+  // up to 3 times with backoff; on final failure, surface a friendly
+  // message rather than the raw VOTable error XML.
+  const MAX_ATTEMPTS = 3;
   let lastErr: GaiaError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -182,14 +183,19 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
       if (signal?.aborted) throw e;
       if (e instanceof GaiaError && e.transient && attempt < MAX_ATTEMPTS) {
         lastErr = e;
-        await sleep(1500, signal);
+        // Exponential backoff: 1.0 s, 2.5 s.
+        await sleep(1000 + 1500 * (attempt - 1), signal);
         continue;
       }
       throw e;
     }
   }
-  // Should be unreachable — the loop either returns or throws.
-  throw lastErr ?? new GaiaError("VizieR query failed.");
+  throw (
+    lastErr ??
+    new GaiaError(
+      "VizieR isn't responding cleanly right now. Please try again in a moment.",
+    )
+  );
 }
 
 async function runAdqlOnce(
@@ -226,6 +232,21 @@ async function runAdqlOnce(
     if (res.status === 503 || /service too busy/i.test(text)) {
       const err = new GaiaError(
         "VizieR is busy right now. Please try again in a moment.",
+      );
+      err.transient = true;
+      throw err;
+    }
+    // VizieR occasionally returns 400 "1 unresolved identifiers!" or
+    // similar parser glitches under load — these are transient
+    // server-side problems with their ADQL parser, not real syntax
+    // errors in our query (which is fixed and well-formed). A second
+    // attempt almost always succeeds.
+    if (
+      res.status === 400 &&
+      /unresolved identifier|NullPointerException|Unable to check/i.test(text)
+    ) {
+      const err = new GaiaError(
+        "VizieR couldn't validate the query. Retrying…",
       );
       err.transient = true;
       throw err;
