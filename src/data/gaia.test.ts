@@ -16,6 +16,7 @@ const sampleRow: GaiaRow = {
   g_mag: -1.46,
   bp_rp: 0.0,
   teff_k: 9940,
+  lum_flame_solar: null,
 };
 
 describe("distanceFromParallax", () => {
@@ -44,8 +45,30 @@ describe("gaiaRowToStar", () => {
     const row = { ...sampleRow, teff_k: null, bp_rp: 0.82 };
     const star = gaiaRowToStar(row);
     expect(star.teff).toBeGreaterThan(5400);
-    expect(star.teff).toBeLessThan(6100);
+    expect(star.teff!).toBeLessThan(6100);
     expect(star.notes).toContain("estimated");
+    expect(star.teffSource).toBe("derived");
+  });
+  it("uses the published Teff directly when present", () => {
+    const row = { ...sampleRow, teff_k: 4321, bp_rp: 0.82 };
+    const star = gaiaRowToStar(row);
+    // Must equal exactly the published value, not a BP-RP derivation.
+    expect(star.teff).toBe(4321);
+    expect(star.teffSource).toBe("published");
+  });
+  it("uses the published luminosity when present", () => {
+    const row = { ...sampleRow, lum_flame_solar: 12.34 };
+    const star = gaiaRowToStar(row);
+    expect(star.luminosity).toBe(12.34);
+    expect(star.luminositySource).toBe("published");
+  });
+  it("returns a star without teff when neither published Teff nor BP-RP is given", () => {
+    const row = { ...sampleRow, teff_k: null, bp_rp: null };
+    const star = gaiaRowToStar(row);
+    expect(star.teff).toBeUndefined();
+    expect(star.notes).toMatch(/unknown/i);
+    // plotStar should refuse such a star.
+    expect(() => plotStar(star)).toThrow();
   });
   it("plots into a sensible H-R region for an A-type star", () => {
     const star = plotStar(gaiaRowToStar(sampleRow));
@@ -68,3 +91,4 @@ describe("nearestRow", () => {
     expect(nearestRow([], 0, 0)).toBeUndefined();
   });
 });
+

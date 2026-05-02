@@ -13,7 +13,12 @@ export interface GaiaRow {
   parallax_over_error: number;
   g_mag: number;
   bp_rp: number | null;
+  // Published Gaia DR3 GSP-Phot effective temperature (paramsup.Teff),
+  // null if not available.
   teff_k: number | null;
+  // Published FLAME bolometric luminosity in solar units
+  // (paramsup."Lum-Flame"), null if not available.
+  lum_flame_solar: number | null;
 }
 
 export class GaiaError extends Error {
@@ -27,8 +32,10 @@ export class GaiaError extends Error {
 
 // VizieR Gaia DR3 main catalog: I/355/gaiadr3.
 // We compute BP-RP from BPmag and RPmag (avoids the hyphenated column name)
-// and parallax_over_error from Plx / e_Plx. Teff is not in this table; the
-// caller derives it from BP-RP via tempFromBpRp.
+// and parallax_over_error from Plx / e_Plx. Joined with the astrophysical-
+// parameters supplement (I/355/paramsup) to pick up published Teff and
+// FLAME luminosity — when present we use those directly rather than
+// deriving from BP-RP.
 function buildConeAdql(
   raDeg: number,
   decDeg: number,
@@ -37,21 +44,24 @@ function buildConeAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
-  ("BPmag" - "RPmag") AS bprp
-FROM "I/355/gaiadr3"
+  g."Source", g."RA_ICRS", g."DE_ICRS", g."Plx", g."e_Plx", g."Gmag",
+  (g."BPmag" - g."RPmag") AS bprp,
+  p."Teff" AS teff_pub,
+  p."Lum-Flame" AS lum_flame
+FROM "I/355/gaiadr3" g
+LEFT OUTER JOIN "I/355/paramsup" p ON g."Source" = p."Source"
 WHERE 1 = CONTAINS(
-    POINT('ICRS', "RA_ICRS", "DE_ICRS"),
+    POINT('ICRS', g."RA_ICRS", g."DE_ICRS"),
     CIRCLE('ICRS', ${raDeg}, ${decDeg}, ${radiusDeg})
   )
-  AND "Plx" IS NOT NULL
-  AND "Plx" > 0
-  AND "e_Plx" IS NOT NULL
-  AND "e_Plx" > 0
-  AND ("Plx" / "e_Plx") > 5
-  AND "Gmag" IS NOT NULL
-  AND "Gmag" < ${magLimit}
-ORDER BY "Gmag" ASC`;
+  AND g."Plx" IS NOT NULL
+  AND g."Plx" > 0
+  AND g."e_Plx" IS NOT NULL
+  AND g."e_Plx" > 0
+  AND (g."Plx" / g."e_Plx") > 5
+  AND g."Gmag" IS NOT NULL
+  AND g."Gmag" < ${magLimit}
+ORDER BY g."Gmag" ASC`;
 }
 
 function buildBoxAdql(
@@ -63,19 +73,22 @@ function buildBoxAdql(
   magLimit: number,
 ): string {
   return `SELECT TOP ${topN}
-  "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
-  ("BPmag" - "RPmag") AS bprp
-FROM "I/355/gaiadr3"
-WHERE "RA_ICRS" BETWEEN ${raMin} AND ${raMax}
-  AND "DE_ICRS" BETWEEN ${decMin} AND ${decMax}
-  AND "Plx" IS NOT NULL
-  AND "Plx" > 0
-  AND "e_Plx" IS NOT NULL
-  AND "e_Plx" > 0
-  AND ("Plx" / "e_Plx") > 5
-  AND "Gmag" IS NOT NULL
-  AND "Gmag" < ${magLimit}
-ORDER BY "Gmag" ASC`;
+  g."Source", g."RA_ICRS", g."DE_ICRS", g."Plx", g."e_Plx", g."Gmag",
+  (g."BPmag" - g."RPmag") AS bprp,
+  p."Teff" AS teff_pub,
+  p."Lum-Flame" AS lum_flame
+FROM "I/355/gaiadr3" g
+LEFT OUTER JOIN "I/355/paramsup" p ON g."Source" = p."Source"
+WHERE g."RA_ICRS" BETWEEN ${raMin} AND ${raMax}
+  AND g."DE_ICRS" BETWEEN ${decMin} AND ${decMax}
+  AND g."Plx" IS NOT NULL
+  AND g."Plx" > 0
+  AND g."e_Plx" IS NOT NULL
+  AND g."e_Plx" > 0
+  AND (g."Plx" / g."e_Plx") > 5
+  AND g."Gmag" IS NOT NULL
+  AND g."Gmag" < ${magLimit}
+ORDER BY g."Gmag" ASC`;
 }
 
 export async function queryConeSearch(
@@ -148,7 +161,7 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
 
 // VizieR returns CSV with a header row followed by data rows.
 // Columns we expect (in declared SELECT order):
-// Source, RA_ICRS, DE_ICRS, Plx, e_Plx, Gmag, bprp
+// Source, RA_ICRS, DE_ICRS, Plx, e_Plx, Gmag, bprp, teff_pub, lum_flame
 function parseCsv(text: string): GaiaRow[] {
   const lines = text
     .split(/\r?\n/)
@@ -170,6 +183,8 @@ function parseCsv(text: string): GaiaRow[] {
   const iEPlx = idx("e_Plx", "e_plx");
   const iG = idx("Gmag", "gmag", "phot_g_mean_mag");
   const iBpRp = idx("bprp", "BP-RP", "bp_rp");
+  const iTeffPub = idx("teff_pub", "Teff", "teff");
+  const iLumFlame = idx("lum_flame", "Lum-Flame", "lumflame");
 
   const rows: GaiaRow[] = [];
   for (let r = 1; r < lines.length; r++) {
@@ -179,6 +194,8 @@ function parseCsv(text: string): GaiaRow[] {
     const ePlx = num(cells[iEPlx]);
     const g = num(cells[iG]);
     const bpRp = iBpRp >= 0 ? num(cells[iBpRp]) : null;
+    const teffPub = iTeffPub >= 0 ? num(cells[iTeffPub]) : null;
+    const lumFlame = iLumFlame >= 0 ? num(cells[iLumFlame]) : null;
     if (plx === null || ePlx === null || g === null) continue;
     if (plx <= 0 || ePlx <= 0) continue;
     rows.push({
@@ -189,7 +206,8 @@ function parseCsv(text: string): GaiaRow[] {
       parallax_over_error: plx / ePlx,
       g_mag: g,
       bp_rp: bpRp,
-      teff_k: null,
+      teff_k: teffPub,
+      lum_flame_solar: lumFlame,
     });
   }
   return rows;
@@ -244,19 +262,32 @@ export function teffFromBpRp(bpRp: number): number {
 
 export function gaiaRowToStar(row: GaiaRow): Star {
   const distancePc = distanceFromParallax(row.parallax_mas);
-  let teff: number;
+  let teff: number | undefined;
+  let teffSource: "published" | "derived" | undefined;
   let notes: string | undefined;
   if (row.teff_k != null && Number.isFinite(row.teff_k)) {
     teff = row.teff_k;
+    teffSource = "published";
   } else if (row.bp_rp != null && Number.isFinite(row.bp_rp)) {
     teff = teffFromBpRp(row.bp_rp);
+    teffSource = "derived";
     notes = "Temperature estimated from the star's colour.";
   } else {
-    teff = 5778;
-    notes = "Temperature unknown; assumed sun-like.";
+    notes = "Temperature unknown — not enough information from Gaia.";
   }
+
   const absMag = absoluteMagnitude(row.g_mag, distancePc);
-  const spectralType = `${deriveSpectralType(teff, absMag)} (estimated)`;
+  const luminosity =
+    row.lum_flame_solar != null && Number.isFinite(row.lum_flame_solar)
+      ? row.lum_flame_solar
+      : undefined;
+  const luminositySource: "published" | "derived" | undefined =
+    luminosity != null ? "published" : teff != null ? "derived" : undefined;
+  const spectralType =
+    teff != null
+      ? `${deriveSpectralType(teff, absMag)} (estimated)`
+      : undefined;
+
   return {
     id: `gaia-${row.source_id}`,
     name: `Star ${row.source_id}`,
@@ -268,6 +299,9 @@ export function gaiaRowToStar(row: GaiaRow): Star {
     bv: row.bp_rp ?? undefined,
     spectralType,
     notes,
+    luminosity,
+    teffSource,
+    luminositySource,
   };
 }
 

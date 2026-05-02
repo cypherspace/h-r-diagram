@@ -21,51 +21,55 @@ const STEPS: Step[] = [
     title: "What is the H-R diagram?",
     body:
       "It's a graph that compares stars by their temperature (across) and " +
-      "their brightness (up the side). When you plot lots of stars, they " +
-      "fall into clear groups — like the main sequence, red giants, and " +
-      "white dwarfs. That's the big idea you're about to discover.",
+      "their brightness (up the side). When you plot lots of stars, you " +
+      "start to see patterns in the way the stars appear on the graph. " +
+      "These patterns gave astronomers clues about how stars are born, " +
+      "live, and die, and they'll give you the same clues.",
   },
   {
     target: "#goto-input",
     title: "Find a part of the sky",
     body:
-      'Type the name of a star or star cluster (try "M45" for the Pleiades, ' +
-      'or "Sirius") and press Go. You can also drag the sky to move it and ' +
-      "scroll to zoom in or out.",
+      'Type the name of a star, star cluster, or constellation (try "M45" ' +
+      'for the Pleiades, or "Sirius") and press Go. You can also drag the ' +
+      "sky to move it and scroll to zoom in or out.",
   },
   {
     target: "#search-btn",
     title: "Search for stars",
     body:
       "Once you've found a part of the sky you like, press Search. The app " +
-      "looks up real stars in that area and marks them as little blue " +
-      "crosses. Nothing has been added to the chart yet — you're in control.",
+      "looks up stars in that area that we have data about, and marks them " +
+      "as little blue crosses.",
   },
   {
     target: "#add-all-btn",
     title: "Add stars to the chart",
     body:
-      'Click a single blue cross to add just that star, or press "Add all" ' +
-      "to add the whole bunch. You can also pick from the named star sets " +
-      "in the side panel (Sun-like stars, red dwarfs, white dwarfs, …) " +
-      "to watch each group appear in its own part of the chart.",
+      "Click a star's blue cross to view data about the star, and add it " +
+      'to the diagram.\n\nIf you want to add lots at once, you can click ' +
+      '"Add all".\n\nIf you don\'t know much about stars at this point, ' +
+      "we've loaded some interesting ones up for you. You can click a " +
+      "marker to see that star, add it to the diagram, and then follow " +
+      "through to read about it on Wikipedia if you like. You can also " +
+      "add whole sets of stars, using the famous groups, onto the diagram " +
+      "at once to see where they appear.",
   },
   {
     target: "#diagram",
     title: "Watch the patterns appear",
     body:
-      "Each dot is drawn in the colour the star really looks (red for cool " +
-      "stars, blue for very hot ones). Click any dot to see that star's " +
-      "info on the right and to recentre the sky on it.",
+      "Every dot represents a star in its real colour. You'll see that " +
+      "hotter stars look bluer; cooler stars look redder. Click any dot " +
+      "to see that star's info on the right and to recentre the sky on it.",
   },
   {
     target: "#info-panel",
     title: "Read the star's info",
     body:
       "Pick any star and you'll see its temperature, brightness, distance " +
-      "and a small picture of where it sits in the sky. The chart options " +
-      "below the graph let you switch between brightness and magnitude, " +
-      "and save your chart to come back to later.",
+      "and a small picture of where it sits in the sky. You can change the " +
+      "diagram to show the measurements that you understand best.",
   },
 ];
 
@@ -160,8 +164,11 @@ export class Walkthrough {
     const h3 = document.createElement("h3");
     h3.textContent = step.title;
 
-    const p = document.createElement("p");
-    p.textContent = step.body;
+    const paragraphs = step.body.split("\n\n").map((para) => {
+      const p = document.createElement("p");
+      p.textContent = para;
+      return p;
+    });
 
     const actions = document.createElement("div");
     actions.className = "tour-actions";
@@ -183,7 +190,7 @@ export class Walkthrough {
     next.addEventListener("click", () => this.advance());
 
     actions.append(skip, progress, next);
-    this.tooltip.append(h3, p, actions);
+    this.tooltip.append(h3, ...paragraphs, actions);
 
     // Re-position after the new content has been laid out so width/height
     // are accurate.

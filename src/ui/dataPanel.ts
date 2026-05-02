@@ -4,7 +4,9 @@ import {
   deriveSpectralType,
   kelvinToCelsius,
   luminositySolar,
+  radiusSolarFromLumTeff,
 } from "../data/derive";
+import { SUN_IMG_DATA_URL } from "../data/sunImage";
 
 export class DataPanel {
   constructor(private container: HTMLElement) {}
@@ -21,20 +23,26 @@ export class DataPanel {
     const absMag =
       "absMag" in star ? star.absMag : absoluteMagnitude(star.mV, star.distancePc);
     const lum =
-      "luminositySolar" in star ? star.luminositySolar : luminositySolar(absMag);
+      "luminositySolar" in star
+        ? star.luminositySolar
+        : star.teff != null
+          ? luminositySolar(absMag, star.teff)
+          : null;
 
     let spectralType = star.spectralType;
-    if (!spectralType) {
+    if (!spectralType && star.teff != null) {
       spectralType = `${deriveSpectralType(star.teff, absMag)} (estimated)`;
     }
 
     this.container.replaceChildren();
 
-    // Thumbnail.
+    // Thumbnail. The Sun is a special case — we ship an embedded
+    // public-domain SDO image rather than asking the HiPS service for a
+    // cutout at RA/Dec 0,0 (which would just be empty sky).
     const img = document.createElement("img");
     img.className = "thumb";
     img.alt = `Sky cutout of ${star.name}`;
-    img.src = thumbnailUrl(star.ra, star.dec);
+    img.src = star.id === "sun" ? SUN_IMG_DATA_URL : thumbnailUrl(star.ra, star.dec);
     img.loading = "lazy";
     this.container.appendChild(img);
 
@@ -48,18 +56,43 @@ export class DataPanel {
     this.container.appendChild(
       headlineStat(
         "Temperature",
-        `${formatTemperatureK(star.teff)}  /  ${formatTemperatureC(star.teff)}`,
+        star.teff != null
+          ? `${formatTemperatureK(star.teff)}  /  ${formatTemperatureC(star.teff)}`
+          : "unknown",
+        star.teffSource,
       ),
     );
     this.container.appendChild(
       headlineStat(
         "Brightness vs. the Sun",
-        `${formatLumAsTimes(lum)}`,
+        lum != null ? `${formatLumAsTimes(lum)}` : "unknown",
+        star.luminositySource,
       ),
     );
     this.container.appendChild(
       headlineStat("Distance", formatDistance(star.distancePc)),
     );
+
+    // Estimated diameter compared to the Sun, derived from L and T via
+    // Stefan-Boltzmann. Only meaningful when both are known.
+    if (lum != null && star.teff != null) {
+      const radiusRatio = radiusSolarFromLumTeff(lum, star.teff);
+      this.container.appendChild(
+        headlineStat(
+          "Estimated diameter vs the Sun",
+          formatRadiusRatio(radiusRatio),
+        ),
+      );
+    }
+
+    if (star.teff == null) {
+      const note = document.createElement("p");
+      note.className = "hint";
+      note.style.marginTop = "0.5rem";
+      note.textContent =
+        "Without a temperature we can't place this star on the H-R diagram.";
+      this.container.appendChild(note);
+    }
 
     // Secondary stats.
     const secondary = document.createElement("dl");
@@ -73,17 +106,16 @@ export class DataPanel {
         "Brightness at a standard distance (absolute magnitude)",
         absMag.toFixed(2),
       ),
-      ...spectralRow(spectralType),
     );
+    if (spectralType) {
+      secondary.append(...spectralRow(spectralType));
+    }
     this.container.appendChild(secondary);
 
     // External-info links: Wikipedia for named stars (when we have a
-    // page slug), plus ESA Sky as a visual "explore this region of the
-    // sky" tool for any star. ESA Sky is run by the European Space Agency
-    // and shows multi-wavelength imagery + the Gaia DR3 catalogue, so
-    // students can hover any marker to see the same star they're looking
-    // at here. Useful in particular for Gaia-discovered stars where a
-    // Wikipedia page doesn't exist.
+    // page slug), SIMBAD for Gaia-discovered stars that resolve to a
+    // catalogued name, plus ESA Sky as a visual "explore this region of
+    // the sky" tool for any star.
     const links = document.createElement("div");
     links.className = "external-links";
     if (star.wikipedia) {
@@ -92,6 +124,11 @@ export class DataPanel {
           `https://en.wikipedia.org/wiki/${star.wikipedia}`,
           "Read about this star on Wikipedia →",
         ),
+      );
+    }
+    if (star.resolved && star.name) {
+      links.appendChild(
+        externalLink(simbadUrl(star.name), "See more data →"),
       );
     }
     links.appendChild(
@@ -148,12 +185,35 @@ function esaSkyUrl(ra: number, dec: number): string {
   return `https://sky.esa.int/esasky/?${params.toString()}`;
 }
 
-function headlineStat(label: string, value: string): HTMLElement {
+// SIMBAD is the canonical astronomical-objects database; following this
+// link lands the user on the star's catalog page with cross-IDs,
+// magnitudes, parallax, references etc.
+function simbadUrl(name: string): string {
+  const params = new URLSearchParams({ Ident: name });
+  return `https://simbad.cds.unistra.fr/simbad/sim-id?${params.toString()}`;
+}
+
+function headlineStat(
+  label: string,
+  value: string,
+  source?: "published" | "derived",
+): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "headline-stat";
   const lab = document.createElement("div");
   lab.className = "headline-label";
   lab.textContent = label;
+  if (source) {
+    const badge = document.createElement("span");
+    badge.className = `provenance-badge ${source}`;
+    badge.textContent = source === "published" ? "Gaia DR3" : "estimated";
+    badge.title =
+      source === "published"
+        ? "Value taken directly from the Gaia DR3 catalogue."
+        : "Value calculated from the star's colour or distance modulus.";
+    lab.appendChild(document.createTextNode(" "));
+    lab.appendChild(badge);
+  }
   const val = document.createElement("div");
   val.className = "headline-value";
   val.textContent = value;
@@ -257,6 +317,17 @@ function formatTemperatureC(k: number): string {
 function formatNumber(n: number): string {
   // Insert thin spaces every three digits for readability.
   return n.toLocaleString("en-GB").replace(/,/g, " ");
+}
+
+function formatRadiusRatio(r: number): string {
+  if (!Number.isFinite(r) || r <= 0) return "—";
+  if (r >= 100) return `${formatNumber(Math.round(r))} × the Sun`;
+  if (r >= 10) return `${r.toFixed(1)} × the Sun`;
+  if (r >= 1) return `${r.toFixed(2)} × the Sun`;
+  if (r >= 0.1) return `${r.toFixed(2)} × the Sun (about 1/${(1 / r).toFixed(0)})`;
+  if (r >= 0.01)
+    return `${r.toExponential(2)} × the Sun (about 1/${(1 / r).toFixed(0)})`;
+  return `${r.toExponential(2)} × the Sun`;
 }
 
 function formatLumAsTimes(l: number): string {

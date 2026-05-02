@@ -12,6 +12,13 @@ export interface ConstellationLine {
   segments: Array<Array<[number, number]>>;
 }
 
+export interface ConstellationLabel {
+  id: string;
+  name: string;
+  ra: number;
+  dec: number;
+}
+
 export const CONSTELLATIONS: ConstellationLine[] = [
   {
     id: "And",
@@ -698,3 +705,133 @@ export const CONSTELLATIONS: ConstellationLine[] = [
     ],
   },
 ];
+
+// ---- label-position derivation ----
+//
+// Each label's anchor starts at the centroid of all segment endpoints
+// (an "average position" that usually sits inside the figure). If the
+// centroid lands within MIN_CLEARANCE_DEG of any segment of the same
+// constellation, we offset perpendicular to the nearest line so labels
+// don't sit on top of the stick figure. Capped at MAX_OFFSET_DEG so
+// labels don't drift far from the figure they describe.
+const MIN_CLEARANCE_DEG = 0.6;
+const MAX_OFFSET_DEG = 3;
+
+function unwrapRa(points: Array<[number, number]>): Array<[number, number]> {
+  // RA wraps at 360°; for averaging we shift points near the wrap into a
+  // contiguous range so the centroid doesn't end up on the opposite side
+  // of the sky.
+  if (points.length === 0) return points;
+  const out: Array<[number, number]> = [];
+  let lastRa = points[0][0];
+  for (const [ra, dec] of points) {
+    let r = ra;
+    while (r - lastRa > 180) r -= 360;
+    while (lastRa - r > 180) r += 360;
+    out.push([r, dec]);
+    lastRa = r;
+  }
+  return out;
+}
+
+function pointSegDist(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  if (dx === 0 && dy === 0) {
+    const ddx = p[0] - a[0];
+    const ddy = p[1] - a[1];
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  const t = Math.max(
+    0,
+    Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)),
+  );
+  const cx = a[0] + t * dx;
+  const cy = a[1] + t * dy;
+  const ddx = p[0] - cx;
+  const ddy = p[1] - cy;
+  return Math.sqrt(ddx * ddx + ddy * ddy);
+}
+
+function computeLabel(c: ConstellationLine): ConstellationLabel {
+  const allPoints: Array<[number, number]> = [];
+  for (const seg of c.segments) for (const p of seg) allPoints.push(p);
+  const unwrapped = unwrapRa(allPoints);
+  let raSum = 0;
+  let decSum = 0;
+  for (const [ra, dec] of unwrapped) {
+    raSum += ra;
+    decSum += dec;
+  }
+  let cx = raSum / unwrapped.length;
+  let cy = decSum / unwrapped.length;
+
+  let nearestDist = Infinity;
+  let nearestVec: [number, number] = [0, 1];
+  for (const seg of c.segments) {
+    const segU = unwrapRa(seg);
+    for (let i = 0; i < segU.length - 1; i++) {
+      const a = segU[i];
+      const b = segU[i + 1];
+      const d = pointSegDist([cx, cy], a, b);
+      if (d < nearestDist) {
+        nearestDist = d;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        nearestVec = [-dy / len, dx / len];
+      }
+    }
+  }
+  if (nearestDist < MIN_CLEARANCE_DEG) {
+    const offset = Math.min(
+      MAX_OFFSET_DEG,
+      MIN_CLEARANCE_DEG - nearestDist + 0.4,
+    );
+    cx += nearestVec[0] * offset;
+    cy += nearestVec[1] * offset;
+  }
+  cx = ((cx % 360) + 360) % 360;
+  cy = Math.max(-90, Math.min(90, cy));
+  return { id: c.id, name: c.name, ra: cx, dec: cy };
+}
+
+function bboxWidth(c: ConstellationLine): number {
+  let lo = Infinity;
+  let hi = -Infinity;
+  let declo = Infinity;
+  let dechi = -Infinity;
+  for (const seg of c.segments) {
+    const u = unwrapRa(seg);
+    for (const [ra, dec] of u) {
+      if (ra < lo) lo = ra;
+      if (ra > hi) hi = ra;
+      if (dec < declo) declo = dec;
+      if (dec > dechi) dechi = dec;
+    }
+  }
+  const midDec = ((declo + dechi) / 2) * (Math.PI / 180);
+  const widthDeg = (hi - lo) * Math.cos(midDec);
+  const heightDeg = dechi - declo;
+  return Math.min(widthDeg, heightDeg);
+}
+
+export const CONSTELLATION_LABELS: ConstellationLabel[] = CONSTELLATIONS.map(
+  computeLabel,
+);
+
+// Smallest bounding-box width across all constellations, in degrees.
+// Drives the sky viewer's "consistent label size" decision (50% of the
+// smallest constellation).
+export const SMALLEST_CONSTELLATION_DEG: number = (() => {
+  let smallest = Infinity;
+  for (const c of CONSTELLATIONS) {
+    const w = bboxWidth(c);
+    if (w > 0 && w < smallest) smallest = w;
+  }
+  return Number.isFinite(smallest) ? smallest : 5;
+})();

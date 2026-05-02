@@ -9,6 +9,7 @@ import {
   kelvinToCelsius,
   luminositySolar,
   plotStar,
+  radiusSolarFromLumTeff,
   tempFromBV,
   tempToColourPos,
 } from "./derive";
@@ -174,6 +175,31 @@ describe("tempToColourPos", () => {
   it("clamps temperatures outside the table range", () => {
     expect(tempToColourPos(100000)).toBe(0);
     expect(tempToColourPos(500)).toBe(1);
+  });
+});
+
+describe("radiusSolarFromLumTeff", () => {
+  it("returns 1 R_sun for L = 1, T = T_sun", () => {
+    expect(radiusSolarFromLumTeff(1, 5778)).toBeCloseTo(1, 5);
+  });
+  it("matches Sirius A: ~1.7 R_sun for L ≈ 25, T ≈ 9940 K", () => {
+    const r = radiusSolarFromLumTeff(25, 9940);
+    expect(r).toBeGreaterThan(1.5);
+    expect(r).toBeLessThan(2.0);
+  });
+  it("matches a red giant: ~50 R_sun for L ≈ 600, T ≈ 4400 K", () => {
+    const r = radiusSolarFromLumTeff(600, 4400);
+    expect(r).toBeGreaterThan(35);
+    expect(r).toBeLessThan(60);
+  });
+  it("matches a white dwarf: tiny R for L ≈ 0.0026, T ≈ 25000 K", () => {
+    const r = radiusSolarFromLumTeff(0.0026, 25000);
+    expect(r).toBeLessThan(0.05);
+  });
+  it("returns NaN for invalid inputs", () => {
+    expect(Number.isNaN(radiusSolarFromLumTeff(0, 5778))).toBe(true);
+    expect(Number.isNaN(radiusSolarFromLumTeff(1, 0))).toBe(true);
+    expect(Number.isNaN(radiusSolarFromLumTeff(-1, 5778))).toBe(true);
   });
 });
 

@@ -1,6 +1,10 @@
 import type { Star } from "../types";
 import type { MarkerShape, StarSet } from "../data/sampleStars";
-import { CONSTELLATIONS } from "../data/constellations";
+import {
+  CONSTELLATIONS,
+  CONSTELLATION_LABELS,
+  SMALLEST_CONSTELLATION_DEG,
+} from "../data/constellations";
 
 declare global {
   interface Window {
@@ -86,6 +90,11 @@ export class SkyViewer {
   private setCatalogs = new Map<string, AladinCatalog>();
   private candidateCatalog?: AladinCatalog;
   private constellationOverlay?: AladinGraphicOverlay;
+  private constellationLabelCatalog?: AladinCatalog;
+  // Set true once we've created the label catalog. We only show
+  // labels at coarse-enough zoom (FOV ≥ HIDE_LABELS_BELOW_FOV degrees);
+  // a polling loop adjusts visibility as the user zooms.
+  private constellationLabelsCreated = false;
   private samplesById = new Map<string, Star>();
   private candidatesById = new Map<string, CandidateStar>();
   private opts: SkyViewerOptions;
@@ -256,8 +265,65 @@ export class SkyViewer {
         this.constellationOverlay = overlay;
       }
       this.constellationOverlay.show();
+      this.ensureConstellationLabels();
     } else {
       this.constellationOverlay?.hide();
+      this.constellationLabelCatalog?.hide();
+    }
+  }
+
+  private ensureConstellationLabels(): void {
+    if (!this.aladin || !window.A) return;
+    if (!this.constellationLabelsCreated) {
+      // Catalog with no per-source markers — only labels. Aladin Lite
+      // renders catalog labels next to each source; we hide the source
+      // markers themselves by setting size 0 and a transparent colour.
+      const cat = window.A.catalog({
+        name: "Constellation names",
+        sourceSize: 0,
+        color: "rgba(0,0,0,0)",
+        shape: "circle",
+        displayLabel: true,
+        labelColumn: "name",
+        labelColor: "#9aa6c2",
+        labelFont: "italic 12px system-ui, sans-serif",
+      });
+      this.aladin.addCatalog(cat);
+      const sources = CONSTELLATION_LABELS.map((l) =>
+        window.A!.source(l.ra, l.dec, { name: l.name }),
+      );
+      cat.addSources(sources);
+      this.constellationLabelCatalog = cat;
+      this.constellationLabelsCreated = true;
+      // Document the smallest constellation size we computed — used to
+      // guide the FOV threshold. Logged once for sanity.
+      // eslint-disable-next-line no-console
+      console.debug?.(
+        `[sky] smallest constellation: ${SMALLEST_CONSTELLATION_DEG.toFixed(1)}°`,
+      );
+      // Adjust visibility on initial load and on every Aladin zoom event.
+      this.aladin.on("zoomChanged", () => this.refreshConstellationLabelVis());
+      this.aladin.on("positionChanged", () =>
+        this.refreshConstellationLabelVis(),
+      );
+    }
+    this.refreshConstellationLabelVis();
+  }
+
+  private static readonly HIDE_LABELS_BELOW_FOV = 5;
+
+  private refreshConstellationLabelVis(): void {
+    if (!this.constellationLabelCatalog || !this.aladin) return;
+    if (!this.constellationsVisible) {
+      this.constellationLabelCatalog.hide();
+      return;
+    }
+    const fov = this.aladin.getFov();
+    const widest = Math.max(fov[0] ?? 0, fov[1] ?? 0);
+    if (widest >= SkyViewer.HIDE_LABELS_BELOW_FOV) {
+      this.constellationLabelCatalog.show();
+    } else {
+      this.constellationLabelCatalog.hide();
     }
   }
 
