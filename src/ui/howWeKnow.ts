@@ -224,10 +224,24 @@ export class HowWeKnow {
     title.textContent = "How we know";
 
     const intro = document.createElement("p");
-    intro.textContent =
+    intro.append(
       "Each piece of data shown for a star — its distance, brightness, " +
-      "temperature, luminosity, classification — is calculated from a " +
-      "raw measurement. Click a topic to see how.";
+        "temperature, luminosity, classification — is calculated from raw " +
+        "measurements of the light it gives out. The measurements we use " +
+        "were made by a European Space Agency spacecraft called Gaia. You " +
+        "can ",
+    );
+    const gaiaLink = document.createElement("a");
+    gaiaLink.href =
+      "https://www.esa.int/Science_Exploration/Space_Science/Gaia";
+    gaiaLink.target = "_blank";
+    gaiaLink.rel = "noopener noreferrer";
+    gaiaLink.textContent = "click here";
+    intro.appendChild(gaiaLink);
+    intro.append(
+      " to learn more about the spacecraft and the data; or click a topic " +
+        "to see how we use the data from Gaia.",
+    );
 
     this.modal.append(closeBtn, title, intro);
 
