@@ -830,10 +830,14 @@ export function formatLuminosityTick(
 
   if (unit === "watts") {
     // Always show watts in scientific notation: each decade of solar
-    // luminosity = a decade of watts, with the same 3.83 prefix.
+    // luminosity = a decade of watts, with the same 3.83 prefix. The
+    // unit ("W") is omitted from each tick because the y-axis label
+    // already says "Power output (watts)" — repeating "W" on every
+    // tick made the labels too long and the leading "3" got clipped
+    // by the plot edge.
     if (!isDecade) return "";
     const e = Math.round(logSolar);
-    return `3.83 × 10${toSuperscript(e + 26)} W`;
+    return `3.83 × 10${toSuperscript(e + 26)}`;
   }
 
   // Solar units below this point.
