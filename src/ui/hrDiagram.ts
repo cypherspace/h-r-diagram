@@ -13,6 +13,38 @@ export interface HRDiagramOptions {
   onPointClick?: (star: PlottedStar) => void;
 }
 
+// A region on the H-R diagram. Two shapes are supported:
+//   "band" — a curved stripe (used for the main sequence). Defined by
+//     control points giving the brighter and fainter edges in
+//     luminosity (solar units) at each temperature; rendered as a
+//     smooth Catmull-Rom area.
+//   "blob" — a soft elliptical cloud (used for giants, white dwarfs,
+//     and the advanced groups). Defined by a centre in (T, L) and
+//     half-widths in dex of log T and log L. Rendered with a radial
+//     gradient so the edges fade rather than sit on a hard polygon.
+interface BandRegion {
+  type: "band";
+  name: string;
+  color: string;
+  // Each tuple is [T (K), upper L_solar, lower L_solar].
+  centerline: ReadonlyArray<readonly [number, number, number]>;
+  // The label sits at this (T, L) so we can place it where it makes
+  // pedagogical sense (e.g. middle of the main sequence).
+  labelAt: readonly [number, number];
+  labelAngleDeg?: number;
+}
+interface BlobRegion {
+  type: "blob";
+  name: string;
+  color: string;
+  centerT: number;
+  centerL: number;
+  rDexT: number;
+  rDexL: number;
+  rotateDeg?: number;
+}
+type RegionDef = BandRegion | BlobRegion;
+
 export class HRDiagram {
   private container: HTMLElement;
   private axes: AxisConfig;
@@ -41,6 +73,11 @@ export class HRDiagram {
   // so they can scale around the plot centre.
   private innerW = 0;
   private innerH = 0;
+  // "none" hides the regions; "basic" shows the three classical groups
+  // (main sequence / red giants / white dwarfs); "advanced" adds blue
+  // giants, red dwarfs, red supergiants, the instability strip
+  // (variable stars) and the sub-giant transition region.
+  private overlay: "none" | "basic" | "advanced" = "none";
 
   // Stable handlers so we can add/remove from window cleanly.
   private onWindowMouseUp = () => {
@@ -211,6 +248,15 @@ export class HRDiagram {
     }
   }
 
+  setOverlay(mode: "none" | "basic" | "advanced"): void {
+    this.overlay = mode;
+    this.render();
+  }
+
+  getOverlay(): "none" | "basic" | "advanced" {
+    return this.overlay;
+  }
+
   destroy(): void {
     this.resizeObserver.disconnect();
     this.svg.node()?.removeEventListener("wheel", this.onSvgWheel);
@@ -316,6 +362,19 @@ export class HRDiagram {
       .attr("text-anchor", "middle")
       .text(this.yLabel());
 
+    // Region overlay (main sequence, red giants, white dwarfs, etc).
+    // Drawn BEFORE points so dots stay on top, but AFTER axes so the
+    // axis text never gets covered. Only renders in the canonical
+    // luminosity-vs-temperature view, where (T, L) data coordinates
+    // map cleanly to the regions.
+    if (
+      this.overlay !== "none" &&
+      this.axes.yMode === "luminosity" &&
+      this.axes.xMode === "temperature"
+    ) {
+      this.renderOverlay(xScale, yScale, innerW, innerH);
+    }
+
     // Points — skip stars whose plotted coordinates aren't finite numbers.
     const plottable = this.stars.filter((d) => {
       const x = xValue(d);
@@ -343,12 +402,302 @@ export class HRDiagram {
       );
   }
 
+  // ---- region overlay ----
+
+  // The main sequence centerline runs S-shaped through (T, L) — steep
+  // at the hot end (O/B), gentle through F/G/K (the textbook
+  // "flattening" around the Sun), then steeper again into the M
+  // dwarfs. The control points sit roughly on a smooth curve d log L /
+  // d log T ≈ -7 to -8 across most of the band, sampled finely enough
+  // (16 points) that the Catmull-Rom interpolation has no visible
+  // wobble. Band half-width is ±0.4 dex in log L throughout. Each
+  // tuple is [T_eff (K), upper edge L_solar, lower edge L_solar].
+  private static readonly MAIN_SEQUENCE: ReadonlyArray<readonly [number, number, number]> = [
+    [40000, 8.0e5, 1.3e5],
+    [30000, 1.3e5, 2.0e4],
+    [20000, 1.0e4, 1500],
+    [15000, 2500, 400],
+    [12000, 630, 100],
+    [10000, 160, 25],
+    [8500, 40, 6.3],
+    [7000, 9.0, 1.4],
+    [6000, 2.5, 0.40],
+    [5500, 1.0, 0.16],
+    [5000, 0.50, 0.08],
+    [4500, 0.25, 0.040],
+    [4000, 0.10, 0.016],
+    [3500, 0.040, 0.0063],
+    [3000, 0.010, 0.0016],
+    [2400, 0.0020, 0.00032],
+  ];
+
+  private static readonly REGIONS_BASIC: ReadonlyArray<RegionDef> = [
+    {
+      type: "band",
+      name: "Main sequence",
+      color: "#ffd97a",
+      centerline: HRDiagram.MAIN_SEQUENCE,
+      labelAt: [6800, 3.6],
+      // Positive rotation = clockwise in SVG. The band goes from
+      // upper-left (hot, bright) to lower-right (cool, faint), which
+      // is a clockwise tilt from horizontal — so the label rotation
+      // must be POSITIVE to follow it (a negative value would put the
+      // text perpendicular to the band).
+      labelAngleDeg: 32,
+    },
+    {
+      type: "blob",
+      name: "Red giants",
+      color: "#ff8b3a",
+      // The basic overlay groups giants with supergiants because
+      // the simple three-zone view doesn't separate them. The cluster
+      // therefore spans roughly two and a half decades in luminosity
+      // (10 to a few × 10⁵ L☉) at cool temperatures (2 500 – 5 500 K).
+      centerT: 3700,
+      centerL: 800,
+      rDexT: 0.17,
+      rDexL: 1.9,
+      rotateDeg: 8,
+    },
+    {
+      type: "blob",
+      name: "White dwarfs",
+      color: "#d6e5ff",
+      // White dwarfs cool over time at roughly fixed (Earth-sized)
+      // radius, so their luminosity correlates strongly with
+      // temperature: hot WDs are bright, cool WDs are faint. The
+      // resulting cluster runs along a diagonal from upper-left
+      // (~25 000 K, ~0.05 L☉) to lower-right (~6 000 K, ~10⁻⁴ L☉).
+      // Rotating the ellipse +22° lines its long axis up with this
+      // cooling sequence.
+      centerT: 12500,
+      centerL: 0.003,
+      rDexT: 0.40,
+      rDexL: 1.1,
+      rotateDeg: 22,
+    },
+  ];
+  private static readonly REGIONS_ADVANCED: ReadonlyArray<RegionDef> = [
+    // Use main sequence + white dwarfs from BASIC, but replace
+    // "Red giants" with a smaller version since the advanced view
+    // breaks supergiants out into their own region.
+    ...HRDiagram.REGIONS_BASIC.filter((r) => r.name !== "Red giants"),
+    {
+      type: "blob",
+      name: "Red giants",
+      color: "#ff8b3a",
+      centerT: 4100,
+      centerL: 200,
+      rDexT: 0.13,
+      rDexL: 1.1,
+      rotateDeg: 6,
+    },
+    {
+      type: "blob",
+      name: "Blue supergiants",
+      color: "#79c8ff",
+      centerT: 18000,
+      centerL: 1e5,
+      rDexT: 0.27,
+      rDexL: 0.65,
+    },
+    {
+      type: "blob",
+      name: "Red supergiants",
+      color: "#ff5050",
+      centerT: 3500,
+      centerL: 1e5,
+      rDexT: 0.18,
+      rDexL: 0.7,
+    },
+    {
+      type: "blob",
+      name: "Red dwarfs",
+      color: "#ff8585",
+      centerT: 3100,
+      centerL: 0.005,
+      rDexT: 0.13,
+      rDexL: 0.9,
+      rotateDeg: 60,
+    },
+    {
+      type: "blob",
+      name: "Instability strip (variable stars)",
+      color: "#c084ff",
+      centerT: 6500,
+      centerL: 200,
+      rDexT: 0.1,
+      rDexL: 1.4,
+    },
+    {
+      type: "blob",
+      name: "Subgiants",
+      color: "#9be7c4",
+      centerT: 5200,
+      centerL: 8,
+      rDexT: 0.1,
+      rDexL: 0.55,
+      rotateDeg: 5,
+    },
+  ];
+
+  private renderOverlay(
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    const regions =
+      this.overlay === "advanced"
+        ? HRDiagram.REGIONS_ADVANCED
+        : HRDiagram.REGIONS_BASIC;
+    const g = this.root
+      .append("g")
+      .attr("class", "overlay")
+      .attr("clip-path", `url(#${this.clipId})`);
+    // Per-region radial gradients give the soft fade-out at the edges
+    // of each blob, so the overlay reads like a real H-R diagram
+    // (Wikipedia / Britannica style) rather than a polygon outline.
+    // Plus a small Gaussian blur applied to the main-sequence band so
+    // its edges feather into the chart background — closer to how the
+    // band actually looks in published diagrams where stars scatter
+    // either side of the centerline.
+    const defs = g.append("defs");
+    defs
+      .append("filter")
+      .attr("id", `${this.clipId}-band-blur`)
+      .attr("x", "-2%")
+      .attr("y", "-2%")
+      .attr("width", "104%")
+      .attr("height", "104%")
+      .append("feGaussianBlur")
+      .attr("stdDeviation", "1.6");
+    for (const r of regions) {
+      if (r.type !== "blob") continue;
+      const id = `${this.clipId}-blob-${slug(r.name)}`;
+      const grad = defs
+        .append("radialGradient")
+        .attr("id", id)
+        .attr("cx", "50%")
+        .attr("cy", "50%")
+        .attr("r", "55%");
+      grad.append("stop").attr("offset", "0%").attr("stop-color", r.color).attr("stop-opacity", 0.55);
+      grad.append("stop").attr("offset", "55%").attr("stop-color", r.color).attr("stop-opacity", 0.32);
+      grad.append("stop").attr("offset", "100%").attr("stop-color", r.color).attr("stop-opacity", 0);
+    }
+
+    for (const r of regions) {
+      if (r.type === "band") this.drawBand(g, r, xScale, yScale, innerW, innerH);
+      else this.drawBlob(g, r, xScale, yScale, innerW, innerH);
+    }
+  }
+
+  private drawBand(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    r: BandRegion,
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    // Smooth area through the (T, L_top, L_bottom) control points using
+    // Catmull-Rom interpolation. This gives the characteristic S-shape
+    // of the main sequence — gentle through F/G/K, steeper at the
+    // extremes — without any visible polygon facets.
+    const area = d3
+      .area<readonly [number, number, number]>()
+      .x((d) => xScale(d[0]))
+      .y0((d) => yScale(d[2]))
+      .y1((d) => yScale(d[1]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+    const pathD = area(r.centerline as Array<[number, number, number]>) ?? "";
+    g.append("path")
+      .attr("d", pathD)
+      .attr("fill", r.color)
+      .attr("fill-opacity", 0.22)
+      .attr("filter", `url(#${this.clipId}-band-blur)`);
+
+    // Label along the band, rotated to follow the band's slope and
+    // sized larger than the blob labels — the main sequence is the
+    // headline result of the H-R diagram, so it deserves emphasis.
+    const [lT, lL] = r.labelAt;
+    const lx = clampN(xScale(lT), 12, innerW - 12);
+    const ly = clampN(yScale(lL), 14, innerH - 6);
+    const t = g
+      .append("text")
+      .attr("x", lx)
+      .attr("y", ly)
+      .attr("text-anchor", "middle")
+      .attr("fill", r.color)
+      .attr("font-size", 16)
+      .attr("font-weight", 600)
+      .attr("font-style", "italic")
+      .attr("paint-order", "stroke")
+      .attr("stroke", "#0c1326")
+      .attr("stroke-width", 3.5)
+      .attr("stroke-linejoin", "round")
+      .text(r.name);
+    if (r.labelAngleDeg) {
+      t.attr("transform", `rotate(${r.labelAngleDeg} ${lx} ${ly})`);
+    }
+  }
+
+  private drawBlob(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    r: BlobRegion,
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    // Convert the dex half-widths into pixel half-widths via the scale.
+    // The scale is log, so log10(T_center) ± rDexT translates to two T
+    // values whose pixel positions give us the ellipse's pixel size.
+    const cx = xScale(r.centerT);
+    const cy = yScale(r.centerL);
+    const t1 = Math.pow(10, Math.log10(r.centerT) + r.rDexT);
+    const t2 = Math.pow(10, Math.log10(r.centerT) - r.rDexT);
+    const l1 = Math.pow(10, Math.log10(r.centerL) + r.rDexL);
+    const l2 = Math.pow(10, Math.log10(r.centerL) - r.rDexL);
+    const rx = Math.abs(xScale(t1) - xScale(t2)) / 2;
+    const ry = Math.abs(yScale(l1) - yScale(l2)) / 2;
+
+    const id = `${this.clipId}-blob-${slug(r.name)}`;
+    const ell = g
+      .append("ellipse")
+      .attr("cx", cx)
+      .attr("cy", cy)
+      .attr("rx", rx)
+      .attr("ry", ry)
+      .attr("fill", `url(#${id})`)
+      .attr("stroke", "none");
+    if (r.rotateDeg) {
+      ell.attr("transform", `rotate(${r.rotateDeg} ${cx} ${cy})`);
+    }
+
+    const lx = clampN(cx, 12, innerW - 12);
+    const ly = clampN(cy, 14, innerH - 6);
+    g.append("text")
+      .attr("x", lx)
+      .attr("y", ly)
+      .attr("text-anchor", "middle")
+      .attr("fill", r.color)
+      .attr("font-size", 11)
+      .attr("font-weight", 600)
+      .attr("paint-order", "stroke")
+      .attr("stroke", "#0c1326")
+      .attr("stroke-width", 2.5)
+      .attr("stroke-linejoin", "round")
+      .text(r.name);
+  }
+
   // ---- axis plumbing ----
 
   private xValueFn(): (d: PlottedStar) => number {
     if (this.axes.xMode === "temperature") return (d) => d.teff;
-    // Colour mode: ordinal position derived from the star's temperature
-    // across the 7 OBAFGKM bands; gives evenly-spaced colour labels.
+    // Both colour and spectral-class modes use the same ordinal
+    // position (0 at hot O end, 1 at cool M end), since both are
+    // determined by temperature — they just differ in tick labels.
     return (d) => tempToColourPos(d.teff);
   }
 
@@ -393,13 +742,17 @@ export class HRDiagram {
 
   private makeXAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
     const axis = d3.axisBottom(scale);
-    if (this.axes.xMode === "bv") {
-      // Tick at the centre of each colour band, labelled by name.
+    if (this.axes.xMode === "bv" || this.axes.xMode === "spectralClass") {
+      // Categorical axis. Same tick positions for both modes (one at
+      // the centre of each OBAFGKM band) — only the labels differ.
       const N = COLOUR_BANDS.length;
       const tickValues = COLOUR_BANDS.map((_b, i) => (i + 0.5) / N);
-      axis
-        .tickValues(tickValues)
-        .tickFormat((_v, i) => COLOUR_BANDS[i]?.label ?? "");
+      axis.tickValues(tickValues);
+      if (this.axes.xMode === "spectralClass") {
+        axis.tickFormat((_v, i) => COLOUR_BANDS[i]?.spectralLetter ?? "");
+      } else {
+        axis.tickFormat((_v, i) => COLOUR_BANDS[i]?.label ?? "");
+      }
       return axis;
     }
     if (this.axes.xMode === "temperature" && this.axes.xScale === "log") {
@@ -424,8 +777,9 @@ export class HRDiagram {
 
   private xLabel(): string {
     if (this.axes.xMode === "temperature") {
-      return "Surface temperature (K) — hotter ←";
+      return "← hotter — Surface temperature (K) — cooler →";
     }
+    if (this.axes.xMode === "spectralClass") return "Spectral class";
     return "Colour";
   }
 
@@ -438,9 +792,6 @@ export class HRDiagram {
     return "Absolute magnitude — brighter ↑";
   }
 }
-
-// L_☉ = 3.828 × 10²⁶ W (IAU 2015 nominal solar luminosity).
-const L_SUN_W = 3.828e26;
 
 const SUPERSCRIPTS: Record<string, string> = {
   "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
@@ -469,33 +820,36 @@ export function formatLuminosityTick(
   unit: "solar" | "watts",
 ): string {
   if (!Number.isFinite(solarValue) || solarValue <= 0) return "";
-  const value = unit === "watts" ? solarValue * L_SUN_W : solarValue;
-  // Skip non-decade ticks (within ~5%) when in powers/fractions mode so
-  // we don't get clutter — d3 sometimes adds intermediate ticks like 2,
-  // 5 which look messy with these label styles.
-  const log = Math.log10(value);
-  const isDecade = Math.abs(log - Math.round(log)) < 0.02;
+  // Decade detection works on the SOLAR value — ticks are positioned
+  // by d3 at solar decades (1, 10, 100, …) regardless of unit, and
+  // for watts mode we want to label exactly those positions with their
+  // watts equivalent. Watts decades (10²⁵, 10²⁶, …) wouldn't line up
+  // because L☉ ≈ 3.83 × 10²⁶ W is not itself a decade.
+  const logSolar = Math.log10(solarValue);
+  const isDecade = Math.abs(logSolar - Math.round(logSolar)) < 0.02;
 
+  if (unit === "watts") {
+    // Always show watts in scientific notation: each decade of solar
+    // luminosity = a decade of watts, with the same 3.83 prefix.
+    if (!isDecade) return "";
+    const e = Math.round(logSolar);
+    return `3.83 × 10${toSuperscript(e + 26)} W`;
+  }
+
+  // Solar units below this point.
   if (format === "powers") {
     if (!isDecade) return "";
-    const e = Math.round(log);
-    return `10${toSuperscript(e)}${unit === "watts" ? " W" : ""}`;
+    const e = Math.round(logSolar);
+    return `10${toSuperscript(e)}`;
   }
-  if (format === "fractions" && unit === "solar") {
+  if (format === "fractions") {
     if (!isDecade) return "";
-    const e = Math.round(log);
+    const e = Math.round(logSolar);
     if (e === 0) return "1";
     if (e > 0) return `${10 ** e}`;
     return `1/${10 ** -e}`;
   }
-  // Decimals (default), and the watts fallback when fractions is picked.
-  if (unit === "watts") {
-    // Always scientific for watts since values are huge.
-    if (!isDecade) return "";
-    const e = Math.round(log);
-    return `10${toSuperscript(e)} W`;
-  }
-  return trimSig(value);
+  return trimSig(solarValue);
 }
 
 // Build a new ZoomTransform that scales `transform` around horizontal
@@ -526,4 +880,12 @@ function scaleAroundY(
 }
 function clampK(k: number): number {
   return Math.max(0.5, Math.min(100, k));
+}
+
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }

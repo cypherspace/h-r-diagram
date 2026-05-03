@@ -14,6 +14,7 @@ import { SkyViewer, type CandidateStar } from "./ui/skyViewer";
 import { Walkthrough } from "./ui/walkthrough";
 import { HowItWorks } from "./ui/howItWorks";
 import { HowWeKnow } from "./ui/howWeKnow";
+import { DiagramGuide } from "./ui/diagramGuide";
 import {
   deleteDiagram,
   loadDiagram,
@@ -118,6 +119,16 @@ class App {
     const howWeKnowBtn = document.getElementById("how-we-know-btn");
     howWeKnowBtn?.addEventListener("click", () => {
       new HowWeKnow().open();
+    });
+    const guideBtn = document.getElementById(
+      "diagram-guide-btn",
+    ) as HTMLButtonElement | null;
+    guideBtn?.addEventListener("click", () => {
+      if (guideBtn.disabled) return;
+      new DiagramGuide({
+        onSetOverlay: (mode) => this.diagram.setOverlay(mode),
+        getCurrentOverlay: () => this.diagram.getOverlay(),
+      }).open();
     });
 
     if (!Walkthrough.hasBeenSeen()) {
@@ -459,6 +470,30 @@ class App {
     this.diagram.setStars(Array.from(this.plotted.values()));
     this.diagram.setSelected(this.selectedId);
     this.refreshSetStates();
+    this.refreshGuideButton();
+  }
+
+  // Enable the "Diagram guide" button once the user has enough stars
+  // plotted that the H-R diagram's structure (main sequence, red giants,
+  // white dwarfs) is actually visible — otherwise the explanation has
+  // nothing to point at.
+  private static readonly GUIDE_THRESHOLD = 200;
+
+  private refreshGuideButton(): void {
+    const btn = document.getElementById(
+      "diagram-guide-btn",
+    ) as HTMLButtonElement | null;
+    if (!btn) return;
+    const have = this.plotted.size;
+    const need = App.GUIDE_THRESHOLD;
+    if (have >= need) {
+      btn.disabled = false;
+      btn.title = "A guide to the regions of the H-R diagram.";
+    } else {
+      btn.disabled = true;
+      const remaining = need - have;
+      btn.title = `Plot ${remaining} more star${remaining === 1 ? "" : "s"} to unlock this guide (${have} / ${need}).`;
+    }
   }
 }
 

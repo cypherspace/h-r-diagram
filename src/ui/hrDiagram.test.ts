@@ -26,18 +26,21 @@ describe("formatLuminosityTick", () => {
     expect(formatLuminosityTick(0.001, "powers", "solar")).toBe("10⁻³");
   });
 
-  it("formats watts as powers of ten with W suffix", () => {
-    // 1 L_sun = 3.828e26 W ≈ 10^26.583 — not a decade in watts.
-    // The intermediate decade values in solar that map cleanly are:
-    //   10^x in solar → log10(x * 3.828e26) in watts; only round when
-    //   x = 10^(integer - 26.583).
-    // For our scale-domain ticks (1e-4 .. 1e6 in solar), the watts
-    // values are 3.83e22 .. 3.83e32 — not decade-aligned. So most ticks
-    // get blanked. That's fine for the diagram.
-    // Verify a value that IS a watts decade: 1e-26.583 solar units.
-    const solarOf1e26W = 1e26 / 3.828e26;
-    const result = formatLuminosityTick(solarOf1e26W, "powers", "watts");
-    expect(result).toBe("10²⁶ W");
+  it("labels watts ticks at solar decades using 3.83 × 10^N W", () => {
+    // Watts mode reuses the solar scale's tick positions (1, 10, 100,
+    // … L☉) and labels each with its watts equivalent. 1 L☉ ≈
+    // 3.828 × 10²⁶ W, so each solar decade is one decade of watts
+    // (the "3.83" prefix doesn't change).
+    expect(formatLuminosityTick(1, "decimals", "watts")).toBe("3.83 × 10²⁶ W");
+    expect(formatLuminosityTick(10, "decimals", "watts")).toBe("3.83 × 10²⁷ W");
+    expect(formatLuminosityTick(0.01, "decimals", "watts")).toBe("3.83 × 10²⁴ W");
+    expect(formatLuminosityTick(1e6, "decimals", "watts")).toBe("3.83 × 10³² W");
+    // Same thing in any format — watts is always shown in this style.
+    expect(formatLuminosityTick(1, "powers", "watts")).toBe("3.83 × 10²⁶ W");
+  });
+  it("blanks non-decade ticks in watts mode", () => {
+    expect(formatLuminosityTick(2, "decimals", "watts")).toBe("");
+    expect(formatLuminosityTick(50, "decimals", "watts")).toBe("");
   });
 
   it("returns empty for non-decade ticks in non-decimal modes", () => {

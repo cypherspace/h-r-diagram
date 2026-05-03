@@ -57,11 +57,16 @@ export class Controls {
   private render(): void {
     this.container.replaceChildren();
 
-    // ---- group: axes ----
-    const axesGroup = group("Axes");
-    axesGroup.appendChild(
+    // ---- group: Y axis ----
+    // Each axis gets its own row so the controls don't crowd each
+    // other. The scale (log vs linear) is no longer user-selectable —
+    // it's determined by the chosen mode (luminosity is always log,
+    // absolute magnitude is always linear because magnitude is itself
+    // a logarithm of flux).
+    const yGroup = group("Y axis");
+    yGroup.appendChild(
       this.makeSelect(
-        "Y",
+        "show",
         [
           ["luminosity", "Brightness (× the Sun)"],
           ["absoluteMagnitude", "Absolute magnitude"],
@@ -77,24 +82,8 @@ export class Controls {
         },
       ),
     );
-    axesGroup.appendChild(
-      this.makeSelect(
-        "scale",
-        [
-          ["log", "log"],
-          ["linear", "linear"],
-        ],
-        this.axes.yScale,
-        (v) => {
-          this.axes = { ...this.axes, yScale: v as AxisConfig["yScale"] };
-          this.cb.onAxesChange(this.axes);
-        },
-      ),
-    );
-    // Label-format and unit toggles only make sense for the luminosity
-    // axis. Absolute-magnitude ticks are always plain numbers.
     if (this.axes.yMode === "luminosity") {
-      axesGroup.appendChild(
+      yGroup.appendChild(
         this.makeSelect(
           "style",
           [
@@ -112,7 +101,7 @@ export class Controls {
           },
         ),
       );
-      axesGroup.appendChild(
+      yGroup.appendChild(
         this.makeSelect(
           "units",
           [
@@ -130,12 +119,17 @@ export class Controls {
         ),
       );
     }
-    axesGroup.appendChild(
+    this.container.appendChild(yGroup);
+
+    // ---- group: X axis ----
+    const xGroup = group("X axis");
+    xGroup.appendChild(
       this.makeSelect(
-        "X",
+        "show",
         [
           ["temperature", "Temperature (K)"],
           ["bv", "Colour"],
+          ["spectralClass", "Spectral class (OBAFGKM)"],
         ],
         this.axes.xMode,
         (v) => {
@@ -148,25 +142,7 @@ export class Controls {
         },
       ),
     );
-    // X-scale dropdown is meaningless in Colour mode (the axis is
-    // categorical bands), so only show it for the temperature axis.
-    if (this.axes.xMode === "temperature") {
-      axesGroup.appendChild(
-        this.makeSelect(
-          "scale",
-          [
-            ["log", "log"],
-            ["linear", "linear"],
-          ],
-          this.axes.xScale,
-          (v) => {
-            this.axes = { ...this.axes, xScale: v as AxisConfig["xScale"] };
-            this.cb.onAxesChange(this.axes);
-          },
-        ),
-      );
-    }
-    this.container.appendChild(axesGroup);
+    this.container.appendChild(xGroup);
 
     // ---- group: display ----
     const displayGroup = group("Display");
