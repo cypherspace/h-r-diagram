@@ -438,17 +438,26 @@ export class HRDiagram {
       color: "#ffd97a",
       centerline: HRDiagram.MAIN_SEQUENCE,
       labelAt: [6800, 3.6],
-      labelAngleDeg: -28,
+      // Positive rotation = clockwise in SVG. The band goes from
+      // upper-left (hot, bright) to lower-right (cool, faint), which
+      // is a clockwise tilt from horizontal — so the label rotation
+      // must be POSITIVE to follow it (a negative value would put the
+      // text perpendicular to the band).
+      labelAngleDeg: 32,
     },
     {
       type: "blob",
       name: "Red giants",
       color: "#ff8b3a",
-      centerT: 4200,
-      centerL: 100,
-      rDexT: 0.13,
-      rDexL: 1.0,
-      rotateDeg: 6,
+      // The basic overlay groups giants with supergiants because
+      // the simple three-zone view doesn't separate them. The cluster
+      // therefore spans roughly two and a half decades in luminosity
+      // (10 to a few × 10⁵ L☉) at cool temperatures (2 500 – 5 500 K).
+      centerT: 3700,
+      centerL: 800,
+      rDexT: 0.17,
+      rDexL: 1.9,
+      rotateDeg: 8,
     },
     {
       type: "blob",
@@ -469,7 +478,20 @@ export class HRDiagram {
     },
   ];
   private static readonly REGIONS_ADVANCED: ReadonlyArray<RegionDef> = [
-    ...HRDiagram.REGIONS_BASIC,
+    // Use main sequence + white dwarfs from BASIC, but replace
+    // "Red giants" with a smaller version since the advanced view
+    // breaks supergiants out into their own region.
+    ...HRDiagram.REGIONS_BASIC.filter((r) => r.name !== "Red giants"),
+    {
+      type: "blob",
+      name: "Red giants",
+      color: "#ff8b3a",
+      centerT: 4100,
+      centerL: 200,
+      rDexT: 0.13,
+      rDexL: 1.1,
+      rotateDeg: 6,
+    },
     {
       type: "blob",
       name: "Blue supergiants",
@@ -595,7 +617,9 @@ export class HRDiagram {
       .attr("fill-opacity", 0.22)
       .attr("filter", `url(#${this.clipId}-band-blur)`);
 
-    // Label along the band, lightly rotated to follow the curve.
+    // Label along the band, rotated to follow the band's slope and
+    // sized larger than the blob labels — the main sequence is the
+    // headline result of the H-R diagram, so it deserves emphasis.
     const [lT, lL] = r.labelAt;
     const lx = clampN(xScale(lT), 12, innerW - 12);
     const ly = clampN(yScale(lL), 14, innerH - 6);
@@ -605,11 +629,12 @@ export class HRDiagram {
       .attr("y", ly)
       .attr("text-anchor", "middle")
       .attr("fill", r.color)
-      .attr("font-size", 11)
+      .attr("font-size", 16)
+      .attr("font-weight", 600)
       .attr("font-style", "italic")
       .attr("paint-order", "stroke")
       .attr("stroke", "#0c1326")
-      .attr("stroke-width", 2.5)
+      .attr("stroke-width", 3.5)
       .attr("stroke-linejoin", "round")
       .text(r.name);
     if (r.labelAngleDeg) {

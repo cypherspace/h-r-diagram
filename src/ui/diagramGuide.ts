@@ -301,13 +301,13 @@ function buildSchematic(): HTMLElement {
       <ellipse cx="${x(7000)}" cy="${y(8e4)}" rx="${(x(3500) - x(15000)) / 2}" ry="${(y(2e4) - y(3e5)) / 2}" fill="url(#schemSupergiants)"/>
       <text x="${x(6000)}" y="${y(1e5) + 3}" text-anchor="middle" fill="#ffd0d0" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Supergiants</text>
 
-      <!-- Red giants -->
-      <ellipse cx="${x(4200)}" cy="${y(100)}" rx="${(x(3000) - x(5500)) / 2}" ry="${(y(10) - y(1500)) / 2}" fill="url(#schemGiants)"/>
-      <text x="${x(4200)}" y="${y(120)}" text-anchor="middle" fill="#ffb87a" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Red giants</text>
+      <!-- Red giants (covers giants & supergiants in the simple view) -->
+      <ellipse cx="${x(3700)}" cy="${y(800)}" rx="${(x(2500) - x(5500)) / 2}" ry="${(y(10) - y(1e5)) / 2}" fill="url(#schemGiants)" transform="rotate(8 ${x(3700)} ${y(800)})"/>
+      <text x="${x(3700)}" y="${y(1000)}" text-anchor="middle" fill="#ffb87a" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Red giants</text>
 
       <!-- Main sequence band — smooth Catmull-Rom curve -->
       <path d="${msPath}" fill="url(#msFill)" stroke="#ffd97a" stroke-opacity="0.45" stroke-width="0.7"/>
-      <text x="${x(6500)}" y="${y(2.5)}" text-anchor="middle" fill="#ffd97a" font-size="11" font-style="italic" transform="rotate(-26 ${x(6500)} ${y(2.5)})" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Main sequence</text>
+      <text x="${x(7000)}" y="${y(3)}" text-anchor="middle" fill="#ffd97a" font-size="14" font-weight="600" font-style="italic" transform="rotate(28 ${x(7000)} ${y(3)})" paint-order="stroke" stroke="#0c1326" stroke-width="3" stroke-linejoin="round">Main sequence</text>
 
       <!-- White dwarfs (cooling sequence: hot/bright UL → cool/dim LR) -->
       <ellipse cx="${x(12500)}" cy="${y(0.003)}" rx="${(x(5000) - x(31000)) / 2}" ry="${(y(0.00025) - y(0.04)) / 2}" fill="url(#schemWD)" transform="rotate(22 ${x(12500)} ${y(0.003)})"/>
