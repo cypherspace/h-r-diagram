@@ -211,46 +211,149 @@ const MAIN_GROUPS: Group[] = [
   },
 ];
 
-// Schematic H-R diagram. Hand-drawn SVG showing T (x, hot to cool, log)
-// vs L (y, log) with shaded regions for main sequence, red giants, and
-// white dwarfs.
+// Schematic H-R diagram. Soft, curved version with the main sequence
+// drawn as a smooth S-shape (steep at the extremes, gentle through
+// F/G/K) and the giant / white-dwarf regions drawn as fuzzy clouds
+// using radial gradients — the way they appear on real published H-R
+// diagrams.
 function buildSchematic(): HTMLElement {
   const fig = document.createElement("figure");
   fig.className = "hwk-fig";
+
+  const W = 360, H = 260;
+  const padL = 44, padR = 18, padT = 18, padB = 36;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  // Domain in log10 space.
+  const logTHi = Math.log10(40000);
+  const logTLo = Math.log10(2400);
+  const logLHi = Math.log10(1e6);
+  const logLLo = Math.log10(1e-5);
+  const x = (T: number) =>
+    padL + ((logTHi - Math.log10(T)) / (logTHi - logTLo)) * innerW; // hotter on the left
+  const y = (L: number) =>
+    padT + ((logLHi - Math.log10(L)) / (logLHi - logLLo)) * innerH;
+
+  // Build the smooth main-sequence band as an SVG path through control
+  // points. Use an S-shape: T_centers from hot to cool, with upper /
+  // lower L edges that narrow gently in the middle.
+  const ms: ReadonlyArray<readonly [number, number, number]> = [
+    [40000, 6e5, 5e4],
+    [25000, 5e4, 5e3],
+    [15000, 4e3, 300],
+    [10000, 200, 30],
+    [8000, 30, 6],
+    [6500, 5, 1.3],
+    [5800, 1.7, 0.6],
+    [5000, 0.6, 0.18],
+    [4000, 0.15, 0.04],
+    [3500, 0.04, 0.008],
+    [3000, 0.008, 0.0012],
+    [2400, 0.001, 0.00015],
+  ];
+  const topPts = ms.map(([T, hi]) => [x(T), y(hi)] as [number, number]);
+  const botPts = ms.map(([T, , lo]) => [x(T), y(lo)] as [number, number]);
+  const msPath = catmullRomPath(topPts, false) + catmullRomPath(botPts.slice().reverse(), true) + " Z";
+
+  // Background colour wash so the schematic reads at a glance.
+  const bgGrad = `
+    <linearGradient id="schemBg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0a1430"/>
+      <stop offset="40%" stop-color="#0d1830"/>
+      <stop offset="70%" stop-color="#150f22"/>
+      <stop offset="100%" stop-color="#1a0d1a"/>
+    </linearGradient>`;
+
   fig.innerHTML = `
-    <svg viewBox="0 0 360 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schematic H-R diagram">
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schematic H-R diagram">
       <defs>
-        <linearGradient id="msGrad" x1="0" y1="0" x2="1" y2="1">
+        ${bgGrad}
+        <radialGradient id="schemGiants" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#ff9b4a" stop-opacity="0.6"/>
+          <stop offset="60%" stop-color="#ff8b3a" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="#ff8b3a" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="schemSupergiants" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#ffd9d9" stop-opacity="0.55"/>
+          <stop offset="60%" stop-color="#ff8585" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#ff8585" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="schemWD" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#e8f0ff" stop-opacity="0.55"/>
+          <stop offset="60%" stop-color="#bcd0f0" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="#bcd0f0" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="msFill" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stop-color="#79c8ff" stop-opacity="0.55"/>
           <stop offset="50%" stop-color="#ffd97a" stop-opacity="0.55"/>
           <stop offset="100%" stop-color="#ff6b6b" stop-opacity="0.55"/>
         </linearGradient>
       </defs>
-      <!-- background -->
-      <rect x="40" y="14" width="305" height="190" fill="#0c1326" stroke="#2a3654"/>
-      <!-- axes labels -->
-      <text x="190" y="226" text-anchor="middle" fill="#9aa6c2" font-size="10">Surface temperature — hotter ←</text>
-      <text x="14" y="110" text-anchor="middle" fill="#9aa6c2" font-size="10" transform="rotate(-90 14 110)">Brightness vs the Sun (log) →</text>
-      <!-- temperature ticks -->
-      <text x="60" y="218" fill="#9aa6c2" font-size="9" text-anchor="middle">30 000 K</text>
-      <text x="200" y="218" fill="#9aa6c2" font-size="9" text-anchor="middle">5 800 K (Sun)</text>
-      <text x="320" y="218" fill="#9aa6c2" font-size="9" text-anchor="middle">3 000 K</text>
-      <!-- main sequence band -->
-      <polygon points="55,30 95,28 320,180 305,200 270,200 75,55" fill="url(#msGrad)" stroke="#ffd97a" stroke-width="0.7" opacity="0.85"/>
-      <text x="170" y="115" fill="#ffd97a" font-size="11" font-style="italic" transform="rotate(-32 170 115)">Main sequence</text>
-      <!-- red giants -->
-      <ellipse cx="280" cy="55" rx="55" ry="22" fill="#ff8b3a" opacity="0.45" stroke="#ff8b3a" stroke-width="0.7"/>
-      <text x="280" y="58" text-anchor="middle" fill="#ffb87a" font-size="11" font-weight="600">Red giants</text>
-      <!-- white dwarfs -->
-      <ellipse cx="120" cy="180" rx="55" ry="14" fill="#d6e5ff" opacity="0.35" stroke="#d6e5ff" stroke-width="0.7"/>
-      <text x="120" y="184" text-anchor="middle" fill="#e6ecff" font-size="11" font-weight="600">White dwarfs</text>
+
+      <rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="url(#schemBg)" stroke="#2a3654"/>
+
+      <!-- Supergiants: across the top -->
+      <ellipse cx="${x(7000)}" cy="${y(8e4)}" rx="${(x(3500) - x(15000)) / 2}" ry="${(y(2e4) - y(3e5)) / 2}" fill="url(#schemSupergiants)"/>
+      <text x="${x(6000)}" y="${y(1e5) + 3}" text-anchor="middle" fill="#ffd0d0" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Supergiants</text>
+
+      <!-- Red giants -->
+      <ellipse cx="${x(4200)}" cy="${y(100)}" rx="${(x(3000) - x(5500)) / 2}" ry="${(y(10) - y(1500)) / 2}" fill="url(#schemGiants)"/>
+      <text x="${x(4200)}" y="${y(120)}" text-anchor="middle" fill="#ffb87a" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Red giants</text>
+
+      <!-- Main sequence band — smooth Catmull-Rom curve -->
+      <path d="${msPath}" fill="url(#msFill)" stroke="#ffd97a" stroke-opacity="0.45" stroke-width="0.7"/>
+      <text x="${x(6500)}" y="${y(2.5)}" text-anchor="middle" fill="#ffd97a" font-size="11" font-style="italic" transform="rotate(-26 ${x(6500)} ${y(2.5)})" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Main sequence</text>
+
+      <!-- White dwarfs -->
+      <ellipse cx="${x(12000)}" cy="${y(0.005)}" rx="${(x(5000) - x(28000)) / 2}" ry="${(y(0.0005) - y(0.05)) / 2}" fill="url(#schemWD)" transform="rotate(-8 ${x(12000)} ${y(0.005)})"/>
+      <text x="${x(12000)}" y="${y(0.005) + 3}" text-anchor="middle" fill="#e6ecff" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">White dwarfs</text>
+
       <!-- Sun marker -->
-      <circle cx="200" cy="125" r="3" fill="#ffd97a"/>
-      <text x="207" y="129" fill="#ffd97a" font-size="9">Sun</text>
+      <circle cx="${x(5800)}" cy="${y(1)}" r="3" fill="#ffd97a"/>
+      <text x="${x(5800) + 7}" y="${y(1) + 3}" fill="#ffd97a" font-size="10">Sun</text>
+
+      <!-- Axis labels and ticks -->
+      <text x="${padL + innerW / 2}" y="${H - 18}" text-anchor="middle" fill="#9aa6c2" font-size="10">Surface temperature — hotter ←</text>
+      <text x="14" y="${padT + innerH / 2}" text-anchor="middle" fill="#9aa6c2" font-size="10" transform="rotate(-90 14 ${padT + innerH / 2})">Brightness vs the Sun (log)</text>
+      <text x="${x(30000)}" y="${H - padB + 14}" fill="#9aa6c2" font-size="9" text-anchor="middle">30 000 K</text>
+      <text x="${x(10000)}" y="${H - padB + 14}" fill="#9aa6c2" font-size="9" text-anchor="middle">10 000 K</text>
+      <text x="${x(5800)}" y="${H - padB + 14}" fill="#9aa6c2" font-size="9" text-anchor="middle">5 800 K</text>
+      <text x="${x(3000)}" y="${H - padB + 14}" fill="#9aa6c2" font-size="9" text-anchor="middle">3 000 K</text>
+      <text x="${padL - 4}" y="${y(1e4) + 3}" text-anchor="end" fill="#9aa6c2" font-size="9">10⁴</text>
+      <text x="${padL - 4}" y="${y(1) + 3}" text-anchor="end" fill="#9aa6c2" font-size="9">1</text>
+      <text x="${padL - 4}" y="${y(1e-4) + 3}" text-anchor="end" fill="#9aa6c2" font-size="9">10⁻⁴</text>
     </svg>
-    <figcaption>Schematic H-R diagram: the diagonal main sequence,
-    cool-and-bright red giants (upper right), and hot-but-faint white
-    dwarfs (lower left).</figcaption>
+    <figcaption>The main sequence runs as a curved band from the hot,
+    bright top-left to the cool, faint bottom-right — gentle through
+    F/G/K (where the Sun lives) and steeper at the extremes. Red giants
+    cluster cool but bright; white dwarfs sit hot but faint.</figcaption>
   `;
   return fig;
+}
+
+// Catmull-Rom interpolation as an SVG path. Output starts with an "M"
+// (or "L" if continuing) and uses cubic bezier segments.
+function catmullRomPath(
+  pts: ReadonlyArray<readonly [number, number]>,
+  continueFromPrevious: boolean,
+): string {
+  if (pts.length < 2) return "";
+  const out: string[] = [];
+  if (!continueFromPrevious) out.push(`M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`);
+  else out.push(`L ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`);
+  const alpha = 0.5;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? pts[i + 1];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6 * alpha * 2;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6 * alpha * 2;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6 * alpha * 2;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6 * alpha * 2;
+    out.push(
+      `C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`,
+    );
+  }
+  return out.join(" ");
 }

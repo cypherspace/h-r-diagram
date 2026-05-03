@@ -13,13 +13,37 @@ export interface HRDiagramOptions {
   onPointClick?: (star: PlottedStar) => void;
 }
 
-interface RegionDef {
+// A region on the H-R diagram. Two shapes are supported:
+//   "band" — a curved stripe (used for the main sequence). Defined by
+//     control points giving the brighter and fainter edges in
+//     luminosity (solar units) at each temperature; rendered as a
+//     smooth Catmull-Rom area.
+//   "blob" — a soft elliptical cloud (used for giants, white dwarfs,
+//     and the advanced groups). Defined by a centre in (T, L) and
+//     half-widths in dex of log T and log L. Rendered with a radial
+//     gradient so the edges fade rather than sit on a hard polygon.
+interface BandRegion {
+  type: "band";
   name: string;
   color: string;
-  // Polygon in (T_eff [K], L_solar) space. Order matters — vertices
-  // are joined in sequence to form a closed polygon.
-  points: ReadonlyArray<readonly [number, number]>;
+  // Each tuple is [T (K), upper L_solar, lower L_solar].
+  centerline: ReadonlyArray<readonly [number, number, number]>;
+  // The label sits at this (T, L) so we can place it where it makes
+  // pedagogical sense (e.g. middle of the main sequence).
+  labelAt: readonly [number, number];
+  labelAngleDeg?: number;
 }
+interface BlobRegion {
+  type: "blob";
+  name: string;
+  color: string;
+  centerT: number;
+  centerL: number;
+  rDexT: number;
+  rDexL: number;
+  rotateDeg?: number;
+}
+type RegionDef = BandRegion | BlobRegion;
 
 export class HRDiagram {
   private container: HTMLElement;
@@ -380,72 +404,103 @@ export class HRDiagram {
 
   // ---- region overlay ----
 
-  // Each region is a polygon in (T_eff [K], L_solar) data space. The
-  // shapes are deliberately approximate — useful for "this is roughly
-  // where main-sequence stars sit" rather than for catalogue work.
+  // The main sequence centerline runs S-shaped through (T, L) — steep
+  // at the hot end (O/B), gentle through F/G/K (the famous "kink"
+  // around the Sun), then steeper again into the M dwarfs. Each tuple
+  // is [T_eff (K), upper edge L_solar, lower edge L_solar].
+  private static readonly MAIN_SEQUENCE: ReadonlyArray<readonly [number, number, number]> = [
+    [40000, 6e5, 5e4],
+    [25000, 5e4, 5e3],
+    [15000, 4e3, 300],
+    [10000, 200, 30],
+    [8000, 30, 6],
+    [6500, 5, 1.3],
+    [5800, 1.7, 0.6],
+    [5000, 0.6, 0.18],
+    [4000, 0.15, 0.04],
+    [3500, 0.04, 0.008],
+    [3000, 0.008, 0.0012],
+    [2400, 0.001, 0.00015],
+  ];
+
   private static readonly REGIONS_BASIC: ReadonlyArray<RegionDef> = [
     {
+      type: "band",
       name: "Main sequence",
       color: "#ffd97a",
-      // A diagonal band from hot/bright to cool/faint. Width roughly
-      // matches the spread of real stars on the diagram.
-      points: [
-        [40000, 5e5], [40000, 1e5], [10000, 200], [6000, 5],
-        [3000, 0.005], [3000, 0.0008], [3500, 0.0005],
-        [6000, 1], [10000, 30], [40000, 1e5], [40000, 5e5],
-      ],
+      centerline: HRDiagram.MAIN_SEQUENCE,
+      labelAt: [6800, 3.6],
+      labelAngleDeg: -28,
     },
     {
+      type: "blob",
       name: "Red giants",
       color: "#ff8b3a",
-      points: [
-        [3000, 10], [3000, 1500], [5500, 1500], [5500, 30], [4500, 10],
-      ],
+      centerT: 4200,
+      centerL: 100,
+      rDexT: 0.13,
+      rDexL: 1.0,
+      rotateDeg: 6,
     },
     {
+      type: "blob",
       name: "White dwarfs",
       color: "#d6e5ff",
-      points: [
-        [4500, 1e-5], [4500, 0.05], [40000, 0.05], [40000, 1e-5],
-      ],
+      centerT: 12000,
+      centerL: 0.005,
+      rDexT: 0.45,
+      rDexL: 0.85,
+      rotateDeg: -8,
     },
   ];
   private static readonly REGIONS_ADVANCED: ReadonlyArray<RegionDef> = [
     ...HRDiagram.REGIONS_BASIC,
     {
-      name: "Blue giants",
+      type: "blob",
+      name: "Blue supergiants",
       color: "#79c8ff",
-      points: [
-        [10000, 200], [10000, 1e5], [40000, 1e5], [40000, 200],
-      ],
+      centerT: 18000,
+      centerL: 1e5,
+      rDexT: 0.27,
+      rDexL: 0.65,
     },
     {
-      name: "Red dwarfs",
-      color: "#ff7777",
-      points: [
-        [2400, 0.0008], [2400, 0.05], [3700, 0.05], [3700, 0.0008],
-      ],
-    },
-    {
+      type: "blob",
       name: "Red supergiants",
       color: "#ff5050",
-      points: [
-        [2800, 1500], [2800, 5e5], [5500, 5e5], [5500, 1500],
-      ],
+      centerT: 3500,
+      centerL: 1e5,
+      rDexT: 0.18,
+      rDexL: 0.7,
     },
     {
-      name: "Variable stars (instability strip)",
+      type: "blob",
+      name: "Red dwarfs",
+      color: "#ff8585",
+      centerT: 3100,
+      centerL: 0.005,
+      rDexT: 0.13,
+      rDexL: 0.9,
+      rotateDeg: 60,
+    },
+    {
+      type: "blob",
+      name: "Instability strip (variable stars)",
       color: "#c084ff",
-      points: [
-        [5500, 1], [5500, 5e4], [7500, 5e4], [7500, 1],
-      ],
+      centerT: 6500,
+      centerL: 200,
+      rDexT: 0.1,
+      rDexL: 1.4,
     },
     {
-      name: "Sub-giants (transition)",
+      type: "blob",
+      name: "Subgiants",
       color: "#9be7c4",
-      points: [
-        [4500, 1], [4500, 30], [6500, 30], [6500, 1],
-      ],
+      centerT: 5200,
+      centerL: 8,
+      rDexT: 0.1,
+      rDexL: 0.55,
+      rotateDeg: 5,
     },
   ];
 
@@ -463,38 +518,126 @@ export class HRDiagram {
       .append("g")
       .attr("class", "overlay")
       .attr("clip-path", `url(#${this.clipId})`);
+    // Per-region radial gradients give the soft fade-out at the edges
+    // of each blob, so the overlay reads like a real H-R diagram
+    // (Wikipedia / Britannica style) rather than a polygon outline.
+    const defs = g.append("defs");
     for (const r of regions) {
-      const pts = r.points
-        .map(([t, l]) => `${xScale(t).toFixed(1)},${yScale(l).toFixed(1)}`)
-        .join(" ");
-      g.append("polygon")
-        .attr("points", pts)
-        .attr("fill", r.color)
-        .attr("fill-opacity", 0.18)
-        .attr("stroke", r.color)
-        .attr("stroke-opacity", 0.7)
-        .attr("stroke-width", 0.8);
-      // Label at the centroid, but kept inside the visible plot rect so
-      // labels for regions partially clipped at the axes still show up.
-      const cx =
-        r.points.reduce((s, p) => s + xScale(p[0]), 0) / r.points.length;
-      const cy =
-        r.points.reduce((s, p) => s + yScale(p[1]), 0) / r.points.length;
-      const lx = Math.max(8, Math.min(innerW - 8, cx));
-      const ly = Math.max(14, Math.min(innerH - 4, cy));
-      g.append("text")
-        .attr("x", lx)
-        .attr("y", ly)
-        .attr("text-anchor", "middle")
-        .attr("fill", r.color)
-        .attr("font-size", 10)
-        .attr("font-style", "italic")
-        .attr("paint-order", "stroke")
-        .attr("stroke", "#0c1326")
-        .attr("stroke-width", 2)
-        .attr("stroke-linejoin", "round")
-        .text(r.name);
+      if (r.type !== "blob") continue;
+      const id = `${this.clipId}-blob-${slug(r.name)}`;
+      const grad = defs
+        .append("radialGradient")
+        .attr("id", id)
+        .attr("cx", "50%")
+        .attr("cy", "50%")
+        .attr("r", "55%");
+      grad.append("stop").attr("offset", "0%").attr("stop-color", r.color).attr("stop-opacity", 0.55);
+      grad.append("stop").attr("offset", "55%").attr("stop-color", r.color).attr("stop-opacity", 0.32);
+      grad.append("stop").attr("offset", "100%").attr("stop-color", r.color).attr("stop-opacity", 0);
     }
+
+    for (const r of regions) {
+      if (r.type === "band") this.drawBand(g, r, xScale, yScale, innerW, innerH);
+      else this.drawBlob(g, r, xScale, yScale, innerW, innerH);
+    }
+  }
+
+  private drawBand(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    r: BandRegion,
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    // Smooth area through the (T, L_top, L_bottom) control points using
+    // Catmull-Rom interpolation. This gives the characteristic S-shape
+    // of the main sequence — gentle through F/G/K, steeper at the
+    // extremes — without any visible polygon facets.
+    const area = d3
+      .area<readonly [number, number, number]>()
+      .x((d) => xScale(d[0]))
+      .y0((d) => yScale(d[2]))
+      .y1((d) => yScale(d[1]))
+      .curve(d3.curveCatmullRom.alpha(0.5));
+    const pathD = area(r.centerline as Array<[number, number, number]>) ?? "";
+    g.append("path")
+      .attr("d", pathD)
+      .attr("fill", r.color)
+      .attr("fill-opacity", 0.22)
+      .attr("stroke", r.color)
+      .attr("stroke-opacity", 0.4)
+      .attr("stroke-width", 0.6);
+
+    // Label along the band, lightly rotated to follow the curve.
+    const [lT, lL] = r.labelAt;
+    const lx = clampN(xScale(lT), 12, innerW - 12);
+    const ly = clampN(yScale(lL), 14, innerH - 6);
+    const t = g
+      .append("text")
+      .attr("x", lx)
+      .attr("y", ly)
+      .attr("text-anchor", "middle")
+      .attr("fill", r.color)
+      .attr("font-size", 11)
+      .attr("font-style", "italic")
+      .attr("paint-order", "stroke")
+      .attr("stroke", "#0c1326")
+      .attr("stroke-width", 2.5)
+      .attr("stroke-linejoin", "round")
+      .text(r.name);
+    if (r.labelAngleDeg) {
+      t.attr("transform", `rotate(${r.labelAngleDeg} ${lx} ${ly})`);
+    }
+  }
+
+  private drawBlob(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    r: BlobRegion,
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    // Convert the dex half-widths into pixel half-widths via the scale.
+    // The scale is log, so log10(T_center) ± rDexT translates to two T
+    // values whose pixel positions give us the ellipse's pixel size.
+    const cx = xScale(r.centerT);
+    const cy = yScale(r.centerL);
+    const t1 = Math.pow(10, Math.log10(r.centerT) + r.rDexT);
+    const t2 = Math.pow(10, Math.log10(r.centerT) - r.rDexT);
+    const l1 = Math.pow(10, Math.log10(r.centerL) + r.rDexL);
+    const l2 = Math.pow(10, Math.log10(r.centerL) - r.rDexL);
+    const rx = Math.abs(xScale(t1) - xScale(t2)) / 2;
+    const ry = Math.abs(yScale(l1) - yScale(l2)) / 2;
+
+    const id = `${this.clipId}-blob-${slug(r.name)}`;
+    const ell = g
+      .append("ellipse")
+      .attr("cx", cx)
+      .attr("cy", cy)
+      .attr("rx", rx)
+      .attr("ry", ry)
+      .attr("fill", `url(#${id})`)
+      .attr("stroke", "none");
+    if (r.rotateDeg) {
+      ell.attr("transform", `rotate(${r.rotateDeg} ${cx} ${cy})`);
+    }
+
+    const lx = clampN(cx, 12, innerW - 12);
+    const ly = clampN(cy, 14, innerH - 6);
+    g.append("text")
+      .attr("x", lx)
+      .attr("y", ly)
+      .attr("text-anchor", "middle")
+      .attr("fill", r.color)
+      .attr("font-size", 11)
+      .attr("font-weight", 600)
+      .attr("paint-order", "stroke")
+      .attr("stroke", "#0c1326")
+      .attr("stroke-width", 2.5)
+      .attr("stroke-linejoin", "round")
+      .text(r.name);
   }
 
   // ---- axis plumbing ----
@@ -680,4 +823,12 @@ function scaleAroundY(
 }
 function clampK(k: number): number {
   return Math.max(0.5, Math.min(100, k));
+}
+
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
