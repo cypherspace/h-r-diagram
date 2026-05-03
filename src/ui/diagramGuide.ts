@@ -9,6 +9,8 @@
 // licensed under CC BY-SA 4.0. The schematic SVG below is hand-drawn
 // in the same style.
 
+import * as d3 from "d3";
+
 export type OverlayMode = "none" | "basic" | "advanced";
 
 export class DiagramGuide {
@@ -256,9 +258,16 @@ function buildSchematic(): HTMLElement {
     [3000, 0.010, 0.0016],
     [2400, 0.0020, 0.00032],
   ];
-  const topPts = ms.map(([T, hi]) => [x(T), y(hi)] as [number, number]);
-  const botPts = ms.map(([T, , lo]) => [x(T), y(lo)] as [number, number]);
-  const msPath = catmullRomPath(topPts, false) + catmullRomPath(botPts.slice().reverse(), true) + " Z";
+  // Use d3.area with the same Catmull-Rom centripetal interpolation as
+  // the chart overlay, so the schematic and the live diagram show
+  // identically-shaped main-sequence bands.
+  const msArea = d3
+    .area<readonly [number, number, number]>()
+    .x((d) => x(d[0]))
+    .y0((d) => y(d[2]))
+    .y1((d) => y(d[1]))
+    .curve(d3.curveCatmullRom.alpha(0.5));
+  const msPath = msArea(ms as Array<[number, number, number]>) ?? "";
 
   // Background colour wash so the schematic reads at a glance.
   const bgGrad = `
@@ -336,29 +345,3 @@ function buildSchematic(): HTMLElement {
   return fig;
 }
 
-// Catmull-Rom interpolation as an SVG path. Output starts with an "M"
-// (or "L" if continuing) and uses cubic bezier segments.
-function catmullRomPath(
-  pts: ReadonlyArray<readonly [number, number]>,
-  continueFromPrevious: boolean,
-): string {
-  if (pts.length < 2) return "";
-  const out: string[] = [];
-  if (!continueFromPrevious) out.push(`M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`);
-  else out.push(`L ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`);
-  const alpha = 0.5;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2] ?? pts[i + 1];
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6 * alpha * 2;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6 * alpha * 2;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6 * alpha * 2;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6 * alpha * 2;
-    out.push(
-      `C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`,
-    );
-  }
-  return out.join(" ");
-}

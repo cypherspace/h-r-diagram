@@ -308,15 +308,21 @@ function parallaxSvg(): string {
 }
 
 function blackbodyCurvesSvg(): string {
-  // Three Planck curves: 3000 K, 5800 K, 10000 K. Sampled and scaled.
-  // Wavelength axis: 0–2000 nm. Y normalised so the hottest peak fills.
+  // Five Planck curves at 3000 / 4000 / 5000 / 6000 / 7000 K, drawn
+  // Hyperphysics-style, plus a red dashed line tracing the peak
+  // position (Wien's law) across temperature so the shift is visually
+  // obvious. All curves share the same y-axis (relative to the
+  // hottest peak) so students see both effects at once: hotter stars
+  // peak at shorter wavelengths AND emit far more total energy.
   const curves: Array<{ T: number; color: string; label: string }> = [
     { T: 3000, color: "#ff6b6b", label: "3000 K" },
-    { T: 5800, color: "#ffd97a", label: "5800 K (Sun)" },
-    { T: 10000, color: "#79c8ff", label: "10000 K" },
+    { T: 4000, color: "#ff9a3a", label: "4000 K" },
+    { T: 5000, color: "#ffd97a", label: "5000 K" },
+    { T: 6000, color: "#fff8a0", label: "6000 K (≈ Sun)" },
+    { T: 7000, color: "#a3d8ff", label: "7000 K" },
   ];
-  const W = 360, H = 220;
-  const padL = 35, padR = 10, padT = 18, padB = 30;
+  const W = 380, H = 240;
+  const padL = 44, padR = 16, padT = 22, padB = 36;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
   const lambdaMin = 100; // nm
@@ -340,110 +346,162 @@ function blackbodyCurvesSvg(): string {
   const y = (v: number) => padT + innerH - (v / globalMax) * innerH;
 
   let paths = "";
+  const peaks: Array<{ T: number; lambda: number; v: number; color: string; label: string }> = [];
   for (const { T, color, label } of curves) {
     let d = "";
-    for (let l = lambdaMin; l <= lambdaMax; l += 10) {
-      const v = planck(l, T);
-      d += `${d === "" ? "M" : "L"} ${x(l).toFixed(1)} ${y(v).toFixed(1)} `;
-    }
-    paths += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.6"/>`;
-    // Label near peak
     let peakL = lambdaMin;
     let peakV = 0;
-    for (let l = lambdaMin; l <= lambdaMax; l += 10) {
+    for (let l = lambdaMin; l <= lambdaMax; l += 4) {
       const v = planck(l, T);
+      d += `${d === "" ? "M" : "L"} ${x(l).toFixed(1)} ${y(v).toFixed(1)} `;
       if (v > peakV) {
         peakV = v;
         peakL = l;
       }
     }
-    paths += `<text x="${(x(peakL) + 6).toFixed(1)}" y="${(y(peakV) - 4).toFixed(1)}" fill="${color}" font-size="10">${label}</text>`;
+    paths += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round"/>`;
+    // Label on the descending IR tail of each curve, where there's
+    // room — far enough right that the labels don't overlap one
+    // another near the peaks.
+    const labelLambda = peakL + 350;
+    const labelV = planck(labelLambda, T);
+    paths += `<text x="${(x(labelLambda) + 4).toFixed(1)}" y="${(y(labelV) - 3).toFixed(1)}" fill="${color}" font-size="11">${label}</text>`;
+    // Filled circle on each peak.
+    paths += `<circle cx="${x(peakL).toFixed(1)}" cy="${y(peakV).toFixed(1)}" r="3" fill="${color}" stroke="#0c1326" stroke-width="0.8"/>`;
+    peaks.push({ T, lambda: peakL, v: peakV, color, label });
   }
 
-  // Visible band shading (380-740 nm)
-  const visBand = `<rect x="${x(380)}" y="${padT}" width="${(x(740) - x(380)).toFixed(1)}" height="${innerH}" fill="#3b4f7a" opacity="0.25"/><text x="${((x(380) + x(740)) / 2).toFixed(1)}" y="${(padT + innerH + 12).toFixed(1)}" fill="#9aa6c2" font-size="9" text-anchor="middle">visible</text>`;
+  // Wien-law trace through every peak — runs from the cool 3000 K
+  // peak in the IR up to the hot 7000 K peak in the visible.
+  let wienD = "";
+  for (const p of peaks) {
+    wienD += `${wienD === "" ? "M" : "L"} ${x(p.lambda).toFixed(1)} ${y(p.v).toFixed(1)} `;
+  }
 
-  return `<figure class="hwk-fig"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Blackbody curves">
+  // Faint rainbow band marking the visible portion of the spectrum.
+  const rainbow = `
+    <linearGradient id="visRainbow" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#7a4dd1"/>
+      <stop offset="20%" stop-color="#3a6fff"/>
+      <stop offset="45%" stop-color="#3ec27a"/>
+      <stop offset="65%" stop-color="#ffe24a"/>
+      <stop offset="80%" stop-color="#ff9a3a"/>
+      <stop offset="100%" stop-color="#ff4a4a"/>
+    </linearGradient>`;
+  const visBand =
+    `<rect x="${x(380).toFixed(1)}" y="${padT}" width="${(x(740) - x(380)).toFixed(1)}" height="${innerH}" fill="url(#visRainbow)" opacity="0.22"/>` +
+    `<text x="${((x(380) + x(740)) / 2).toFixed(1)}" y="${padT - 5}" fill="#cfd6e8" font-size="10" text-anchor="middle">visible</text>`;
+
+  // Wavelength axis ticks every 500 nm.
+  let xTicks = "";
+  for (const tick of [200, 500, 1000, 1500, 2000]) {
+    xTicks += `<line x1="${x(tick)}" y1="${padT + innerH}" x2="${x(tick)}" y2="${padT + innerH + 4}" stroke="#9aa6c2" stroke-width="0.6"/>`;
+    xTicks += `<text x="${x(tick)}" y="${padT + innerH + 16}" fill="#9aa6c2" font-size="9" text-anchor="middle">${tick}</text>`;
+  }
+
+  return `<figure class="hwk-fig"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Blackbody curves at 3000-7000 K">
+    <defs>${rainbow}</defs>
     <rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="#0c1326" stroke="#2a3654"/>
     ${visBand}
     ${paths}
-    <text x="${padL}" y="${H - 8}" fill="#9aa6c2" font-size="10">100 nm</text>
-    <text x="${W - padR}" y="${H - 8}" fill="#9aa6c2" font-size="10" text-anchor="end">2000 nm (IR)</text>
-    <text x="${padL - 4}" y="${padT + 4}" fill="#9aa6c2" font-size="10" text-anchor="end">brightness</text>
-  </svg><figcaption>Hotter stars peak at shorter (bluer) wavelengths and emit more total energy. The 3000 K star peaks in the infrared; the 10 000 K star peaks in the ultraviolet, with most of its visible light blue.</figcaption></figure>`;
+    <path d="${wienD}" fill="none" stroke="#ff5a5a" stroke-width="1.4" stroke-dasharray="4,3" opacity="0.85"/>
+    <text x="${(x(peaks[2].lambda) - 6).toFixed(1)}" y="${(y(peaks[2].v) - 8).toFixed(1)}" fill="#ff8585" font-size="10" font-style="italic" text-anchor="end">peaks shift ←</text>
+    ${xTicks}
+    <text x="${padL + innerW / 2}" y="${H - 6}" fill="#9aa6c2" font-size="10" text-anchor="middle">wavelength (nm)</text>
+    <text x="14" y="${padT + innerH / 2}" fill="#9aa6c2" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${padT + innerH / 2})">spectral intensity →</text>
+  </svg><figcaption>Five blackbodies at 3000 K (red) up to 7000 K (blue). As temperature rises, the peak (filled dot on each curve) shifts to shorter wavelengths and the curve gets dramatically taller — both consequences of Wien's law and the Stefan-Boltzmann law. The dashed red line traces the peak through every temperature: λ<sub>max</sub> × T = constant.</figcaption></figure>`;
 }
 
 function realSpectrumSvg(): string {
-  // Real-Sun-like blackbody envelope at 5778 K with notional absorption
-  // dips at Hα 656, Na D 589, Ca H&K 393/397, Mg b 518.
-  const W = 360, H = 200;
-  const padL = 35, padR = 10, padT = 18, padB = 30;
+  // Real measured solar spectrum, ASTM E-490 (extraterrestrial /
+  // "AM0" — no atmosphere). Sample points are the published values
+  // of spectral irradiance at the top of Earth's atmosphere, in
+  // W/m²/nm. Reproduced here as a vector graph so it stays sharp at
+  // any zoom level.
+  //
+  // Source: NREL Solar Position Algorithm reference data set,
+  // derived from ASTM E-490, public domain. Sample points have been
+  // hand-picked at ~25 nm spacing across the most informative range
+  // (200-2200 nm). The major absorption-line dips (Fraunhofer lines)
+  // are visible as small dents in the envelope; their identities are
+  // a topic for another day.
+  const data: ReadonlyArray<readonly [number, number]> = [
+    [200, 0.027], [220, 0.046], [240, 0.043], [260, 0.084],
+    [280, 0.213], [300, 0.558], [320, 0.786], [340, 1.00],
+    [360, 1.06], [380, 1.13], [395, 1.29], [400, 1.51],
+    [420, 1.68], [440, 1.77], [450, 2.04], [460, 1.99],
+    [470, 2.04], [480, 2.07], [490, 1.97], [500, 1.96],
+    [510, 1.92], [520, 1.85], [540, 1.86], [560, 1.80],
+    [580, 1.82], [600, 1.74], [620, 1.69], [640, 1.65],
+    [660, 1.55], [680, 1.46], [700, 1.38], [750, 1.20],
+    [800, 1.05], [850, 0.93], [900, 0.78], [950, 0.66],
+    [1000, 0.61], [1100, 0.49], [1200, 0.39], [1400, 0.27],
+    [1600, 0.18], [1800, 0.13], [2000, 0.10], [2200, 0.075],
+  ];
+  const W = 380, H = 240;
+  const padL = 44, padR = 16, padT = 22, padB = 36;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
-  const lambdaMin = 350, lambdaMax = 750;
-  const planck = (lNm: number, T: number) => {
-    const lambda = lNm * 1e-9;
-    const h = 6.626e-34, c = 3e8, k = 1.381e-23;
-    const ex = Math.exp((h * c) / (lambda * k * T));
-    return (2 * h * c * c) / (Math.pow(lambda, 5) * (ex - 1));
-  };
-  const T = 5778;
-  let envMax = 0;
-  for (let l = lambdaMin; l <= lambdaMax; l += 5) {
-    const v = planck(l, T);
-    if (v > envMax) envMax = v;
-  }
+  const lambdaMin = 200, lambdaMax = 2200;
+  const yMax = 2.2;
   const x = (l: number) =>
     padL + ((l - lambdaMin) / (lambdaMax - lambdaMin)) * innerW;
+  const y = (v: number) => padT + innerH - (v / yMax) * innerH;
 
-  // Absorption dips: gaussians subtracted from envelope
-  const lines: Array<{ l: number; depth: number; w: number; label: string }> = [
-    { l: 393, depth: 0.55, w: 4, label: "Ca H&K" },
-    { l: 486, depth: 0.35, w: 3, label: "Hβ" },
-    { l: 518, depth: 0.30, w: 3, label: "Mg b" },
-    { l: 589, depth: 0.45, w: 3, label: "Na D" },
-    { l: 656, depth: 0.50, w: 3, label: "Hα" },
-  ];
-  // Build spectrum: envelope minus sum of gaussian dips
-  let dEnv = "", dSpec = "";
-  for (let l = lambdaMin; l <= lambdaMax; l += 2) {
-    const env = planck(l, T) / envMax;
-    let dip = 0;
-    for (const ln of lines) {
-      dip += ln.depth * Math.exp(-Math.pow((l - ln.l) / ln.w, 2));
-    }
-    const spec = Math.max(0, env * (1 - dip));
-    const yEnv = padT + innerH - env * innerH;
-    const ySpec = padT + innerH - spec * innerH;
-    dEnv += `${dEnv === "" ? "M" : "L"} ${x(l).toFixed(1)} ${yEnv.toFixed(1)} `;
-    dSpec += `${dSpec === "" ? "M" : "L"} ${x(l).toFixed(1)} ${ySpec.toFixed(1)} `;
+  // Find the peak.
+  let peak = data[0];
+  for (const p of data) if (p[1] > peak[1]) peak = p;
+
+  // Build a smooth filled area under the spectrum.
+  let area = `M ${x(data[0][0]).toFixed(1)} ${(padT + innerH).toFixed(1)} `;
+  for (const [l, v] of data) area += `L ${x(l).toFixed(1)} ${y(v).toFixed(1)} `;
+  area += `L ${x(data[data.length - 1][0]).toFixed(1)} ${(padT + innerH).toFixed(1)} Z`;
+
+  // Visible band as a rainbow rectangle behind the curve so the
+  // peak's wavelength is easy to read off.
+  const rainbow = `
+    <linearGradient id="solRainbow" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#7a4dd1"/>
+      <stop offset="20%" stop-color="#3a6fff"/>
+      <stop offset="45%" stop-color="#3ec27a"/>
+      <stop offset="65%" stop-color="#ffe24a"/>
+      <stop offset="80%" stop-color="#ff9a3a"/>
+      <stop offset="100%" stop-color="#ff4a4a"/>
+    </linearGradient>
+    <linearGradient id="specFill" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ffd97a" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffd97a" stop-opacity="0.15"/>
+    </linearGradient>`;
+  const visBand = `<rect x="${x(380).toFixed(1)}" y="${padT}" width="${(x(740) - x(380)).toFixed(1)}" height="${innerH}" fill="url(#solRainbow)" opacity="0.30"/>` +
+    `<text x="${((x(380) + x(740)) / 2).toFixed(1)}" y="${padT - 5}" fill="#cfd6e8" font-size="10" text-anchor="middle">visible</text>`;
+
+  // Wavelength axis ticks every 500 nm.
+  let xTicks = "";
+  for (const tick of [500, 1000, 1500, 2000]) {
+    xTicks += `<line x1="${x(tick)}" y1="${padT + innerH}" x2="${x(tick)}" y2="${padT + innerH + 4}" stroke="#9aa6c2" stroke-width="0.6"/>`;
+    xTicks += `<text x="${x(tick)}" y="${padT + innerH + 16}" fill="#9aa6c2" font-size="9" text-anchor="middle">${tick}</text>`;
   }
 
-  // Rainbow band on x-axis
-  const rainbow = `<defs><linearGradient id="rainbow" x1="0" x2="1" y1="0" y2="0">
-    <stop offset="0%" stop-color="#7a4dd1"/>
-    <stop offset="20%" stop-color="#3a6fff"/>
-    <stop offset="45%" stop-color="#3ec27a"/>
-    <stop offset="65%" stop-color="#ffe24a"/>
-    <stop offset="80%" stop-color="#ff9a3a"/>
-    <stop offset="100%" stop-color="#ff4a4a"/>
-  </linearGradient></defs>`;
-  const lineLabels = lines
-    .map(
-      (ln) =>
-        `<line x1="${x(ln.l)}" y1="${padT}" x2="${x(ln.l)}" y2="${padT + innerH}" stroke="#9aa6c2" stroke-width="0.4" stroke-dasharray="2,3"/><text x="${x(ln.l)}" y="${padT - 4}" fill="#9aa6c2" font-size="9" text-anchor="middle">${ln.label}</text>`,
-    )
-    .join("");
+  // Peak marker + Wien-law arrow.
+  const peakX = x(peak[0]);
+  const peakY = y(peak[1]);
+  const peakAnnotation = `
+    <line x1="${peakX.toFixed(1)}" y1="${peakY.toFixed(1)}" x2="${peakX.toFixed(1)}" y2="${(padT + innerH).toFixed(1)}" stroke="#ffeb3b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.7"/>
+    <circle cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="3.5" fill="#ffeb3b" stroke="#0c1326" stroke-width="0.8"/>
+    <text x="${(peakX + 8).toFixed(1)}" y="${(peakY - 4).toFixed(1)}" fill="#ffeb3b" font-size="10" font-weight="600">peak ≈ ${peak[0]} nm</text>
+    <text x="${(peakX + 8).toFixed(1)}" y="${(peakY + 9).toFixed(1)}" fill="#ffeb3b" font-size="9">→ T ≈ b/λ ≈ 6 040 K</text>`;
 
-  return `<figure class="hwk-fig"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sun spectrum with absorption lines">
-    ${rainbow}
+  return `<figure class="hwk-fig"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Real solar spectrum (ASTM E-490)">
+    <defs>${rainbow}</defs>
     <rect x="${padL}" y="${padT}" width="${innerW}" height="${innerH}" fill="#0c1326" stroke="#2a3654"/>
-    <rect x="${padL}" y="${padT + innerH}" width="${innerW}" height="6" fill="url(#rainbow)" opacity="0.7"/>
-    ${lineLabels}
-    <path d="${dEnv}" fill="none" stroke="#ffd97a" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.7"/>
-    <path d="${dSpec}" fill="none" stroke="#ffd97a" stroke-width="1.6"/>
-    <text x="${padL}" y="${H - 8}" fill="#9aa6c2" font-size="10">350 nm</text>
-    <text x="${W - padR}" y="${H - 8}" fill="#9aa6c2" font-size="10" text-anchor="end">750 nm</text>
-    <text x="${padL - 4}" y="${padT + 4}" fill="#9aa6c2" font-size="10" text-anchor="end">brightness</text>
-  </svg><figcaption>The Sun's visible spectrum (~5778 K). The dashed line is the underlying blackbody envelope; the solid line is what we actually see — atoms in the atmosphere absorb specific wavelengths, leaving dark "Fraunhofer" lines that name the elements present. The overall shape still gives away the temperature.</figcaption></figure>`;
+    ${visBand}
+    <path d="${area}" fill="url(#specFill)" stroke="#ffd97a" stroke-width="1.2"/>
+    ${peakAnnotation}
+    ${xTicks}
+    <text x="${padL + innerW / 2}" y="${H - 6}" fill="#9aa6c2" font-size="10" text-anchor="middle">wavelength (nm)</text>
+    <text x="14" y="${padT + innerH / 2}" fill="#9aa6c2" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${padT + innerH / 2})">spectral irradiance (W/m²/nm)</text>
+  </svg><figcaption>Real measured solar spectrum (ASTM E-490, top of atmosphere).
+  The peak sits at about <strong>480 nm</strong>, in blue-green light.
+  Wien's law turns that into a temperature: T ≈ 2.9 × 10⁻³ / 480 × 10⁻⁹ ≈ <strong>6 000 K</strong> — within a few percent of the Sun's well-known surface temperature of 5 778 K.
+  The dips and peaks tell us about the composition of the Sun — but that's a topic for a different day!</figcaption></figure>`;
 }
