@@ -58,7 +58,8 @@ header h1 {
 }
 #tour-btn,
 #how-btn,
-#how-we-know-btn {
+#how-we-know-btn,
+#diagram-guide-btn {
   background: var(--panel);
   color: var(--fg);
   border: 1px solid var(--accent);
@@ -70,9 +71,20 @@ header h1 {
 }
 #tour-btn:hover,
 #how-btn:hover,
-#how-we-know-btn:hover { background: #243057; }
+#how-we-know-btn:hover,
+#diagram-guide-btn:not([disabled]):hover { background: #243057; }
 #how-btn { border-color: var(--accent-2); color: var(--accent-2); }
 #how-we-know-btn { border-color: #9be7c4; color: #9be7c4; }
+#diagram-guide-btn { border-color: #d8a8ff; color: #d8a8ff; }
+#diagram-guide-btn[disabled] {
+  /* Greyed out + cursor showing it can't be clicked. The tooltip
+     (set in JS) tells the user how many more stars they need. */
+  border-color: var(--grid);
+  color: var(--muted);
+  background: transparent;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 
 /* "How it works" modal */
 .how-overlay {
@@ -220,6 +232,37 @@ header h1 {
   text-align: left;
 }
 .hwk-table th { color: var(--muted); font-weight: 500; }
+
+/* Diagram-guide overlay buttons (Hide / Basic / Advanced) */
+.guide-overlay-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.8rem;
+}
+.guide-overlay-btn {
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.guide-overlay-btn:hover { background: #243057; }
+.guide-overlay-btn.active {
+  border-color: #d8a8ff;
+  color: #d8a8ff;
+  background: rgba(216, 168, 255, 0.12);
+}
+.guide-attrib {
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-top: 1px solid var(--grid);
+  padding-top: 0.6rem;
+  margin-top: 0.8rem;
+}
 
 /* Provenance badge in the data panel */
 .provenance-badge {

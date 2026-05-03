@@ -13,6 +13,14 @@ export interface HRDiagramOptions {
   onPointClick?: (star: PlottedStar) => void;
 }
 
+interface RegionDef {
+  name: string;
+  color: string;
+  // Polygon in (T_eff [K], L_solar) space. Order matters — vertices
+  // are joined in sequence to form a closed polygon.
+  points: ReadonlyArray<readonly [number, number]>;
+}
+
 export class HRDiagram {
   private container: HTMLElement;
   private axes: AxisConfig;
@@ -41,6 +49,11 @@ export class HRDiagram {
   // so they can scale around the plot centre.
   private innerW = 0;
   private innerH = 0;
+  // "none" hides the regions; "basic" shows the three classical groups
+  // (main sequence / red giants / white dwarfs); "advanced" adds blue
+  // giants, red dwarfs, red supergiants, the instability strip
+  // (variable stars) and the sub-giant transition region.
+  private overlay: "none" | "basic" | "advanced" = "none";
 
   // Stable handlers so we can add/remove from window cleanly.
   private onWindowMouseUp = () => {
@@ -211,6 +224,15 @@ export class HRDiagram {
     }
   }
 
+  setOverlay(mode: "none" | "basic" | "advanced"): void {
+    this.overlay = mode;
+    this.render();
+  }
+
+  getOverlay(): "none" | "basic" | "advanced" {
+    return this.overlay;
+  }
+
   destroy(): void {
     this.resizeObserver.disconnect();
     this.svg.node()?.removeEventListener("wheel", this.onSvgWheel);
@@ -316,6 +338,19 @@ export class HRDiagram {
       .attr("text-anchor", "middle")
       .text(this.yLabel());
 
+    // Region overlay (main sequence, red giants, white dwarfs, etc).
+    // Drawn BEFORE points so dots stay on top, but AFTER axes so the
+    // axis text never gets covered. Only renders in the canonical
+    // luminosity-vs-temperature view, where (T, L) data coordinates
+    // map cleanly to the regions.
+    if (
+      this.overlay !== "none" &&
+      this.axes.yMode === "luminosity" &&
+      this.axes.xMode === "temperature"
+    ) {
+      this.renderOverlay(xScale, yScale, innerW, innerH);
+    }
+
     // Points — skip stars whose plotted coordinates aren't finite numbers.
     const plottable = this.stars.filter((d) => {
       const x = xValue(d);
@@ -341,6 +376,125 @@ export class HRDiagram {
         (d) =>
           `${d.name}\nT_eff: ${d.teff.toFixed(0)} K\nL: ${d.luminositySolar.toExponential(2)} L☉\nM_V: ${d.absMag.toFixed(2)}`,
       );
+  }
+
+  // ---- region overlay ----
+
+  // Each region is a polygon in (T_eff [K], L_solar) data space. The
+  // shapes are deliberately approximate — useful for "this is roughly
+  // where main-sequence stars sit" rather than for catalogue work.
+  private static readonly REGIONS_BASIC: ReadonlyArray<RegionDef> = [
+    {
+      name: "Main sequence",
+      color: "#ffd97a",
+      // A diagonal band from hot/bright to cool/faint. Width roughly
+      // matches the spread of real stars on the diagram.
+      points: [
+        [40000, 5e5], [40000, 1e5], [10000, 200], [6000, 5],
+        [3000, 0.005], [3000, 0.0008], [3500, 0.0005],
+        [6000, 1], [10000, 30], [40000, 1e5], [40000, 5e5],
+      ],
+    },
+    {
+      name: "Red giants",
+      color: "#ff8b3a",
+      points: [
+        [3000, 10], [3000, 1500], [5500, 1500], [5500, 30], [4500, 10],
+      ],
+    },
+    {
+      name: "White dwarfs",
+      color: "#d6e5ff",
+      points: [
+        [4500, 1e-5], [4500, 0.05], [40000, 0.05], [40000, 1e-5],
+      ],
+    },
+  ];
+  private static readonly REGIONS_ADVANCED: ReadonlyArray<RegionDef> = [
+    ...HRDiagram.REGIONS_BASIC,
+    {
+      name: "Blue giants",
+      color: "#79c8ff",
+      points: [
+        [10000, 200], [10000, 1e5], [40000, 1e5], [40000, 200],
+      ],
+    },
+    {
+      name: "Red dwarfs",
+      color: "#ff7777",
+      points: [
+        [2400, 0.0008], [2400, 0.05], [3700, 0.05], [3700, 0.0008],
+      ],
+    },
+    {
+      name: "Red supergiants",
+      color: "#ff5050",
+      points: [
+        [2800, 1500], [2800, 5e5], [5500, 5e5], [5500, 1500],
+      ],
+    },
+    {
+      name: "Variable stars (instability strip)",
+      color: "#c084ff",
+      points: [
+        [5500, 1], [5500, 5e4], [7500, 5e4], [7500, 1],
+      ],
+    },
+    {
+      name: "Sub-giants (transition)",
+      color: "#9be7c4",
+      points: [
+        [4500, 1], [4500, 30], [6500, 30], [6500, 1],
+      ],
+    },
+  ];
+
+  private renderOverlay(
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+    innerW: number,
+    innerH: number,
+  ): void {
+    const regions =
+      this.overlay === "advanced"
+        ? HRDiagram.REGIONS_ADVANCED
+        : HRDiagram.REGIONS_BASIC;
+    const g = this.root
+      .append("g")
+      .attr("class", "overlay")
+      .attr("clip-path", `url(#${this.clipId})`);
+    for (const r of regions) {
+      const pts = r.points
+        .map(([t, l]) => `${xScale(t).toFixed(1)},${yScale(l).toFixed(1)}`)
+        .join(" ");
+      g.append("polygon")
+        .attr("points", pts)
+        .attr("fill", r.color)
+        .attr("fill-opacity", 0.18)
+        .attr("stroke", r.color)
+        .attr("stroke-opacity", 0.7)
+        .attr("stroke-width", 0.8);
+      // Label at the centroid, but kept inside the visible plot rect so
+      // labels for regions partially clipped at the axes still show up.
+      const cx =
+        r.points.reduce((s, p) => s + xScale(p[0]), 0) / r.points.length;
+      const cy =
+        r.points.reduce((s, p) => s + yScale(p[1]), 0) / r.points.length;
+      const lx = Math.max(8, Math.min(innerW - 8, cx));
+      const ly = Math.max(14, Math.min(innerH - 4, cy));
+      g.append("text")
+        .attr("x", lx)
+        .attr("y", ly)
+        .attr("text-anchor", "middle")
+        .attr("fill", r.color)
+        .attr("font-size", 10)
+        .attr("font-style", "italic")
+        .attr("paint-order", "stroke")
+        .attr("stroke", "#0c1326")
+        .attr("stroke-width", 2)
+        .attr("stroke-linejoin", "round")
+        .text(r.name);
+    }
   }
 
   // ---- axis plumbing ----
