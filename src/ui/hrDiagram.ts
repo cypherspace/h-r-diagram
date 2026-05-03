@@ -2,7 +2,9 @@ import * as d3 from "d3";
 import type { AxisConfig, PlottedStar } from "../types";
 import {
   COLOUR_BANDS,
+  M_BOL_SUN,
   blackbodyColor,
+  bolometricCorrection,
   tempToColourPos,
 } from "../data/derive";
 
@@ -364,14 +366,13 @@ export class HRDiagram {
 
     // Region overlay (main sequence, red giants, white dwarfs, etc).
     // Drawn BEFORE points so dots stay on top, but AFTER axes so the
-    // axis text never gets covered. Only renders in the canonical
-    // luminosity-vs-temperature view, where (T, L) data coordinates
-    // map cleanly to the regions.
-    if (
-      this.overlay !== "none" &&
-      this.axes.yMode === "luminosity" &&
-      this.axes.xMode === "temperature"
-    ) {
+    // axis text never gets covered. Region shapes are defined in
+    // (T, L) data space; we project each point through the current
+    // axis modes — colour / spectral-class on X compress the
+    // temperature axis non-linearly, and absolute magnitude on Y
+    // re-maps L through M_V = M_bol − 2.5 log L − BC(T). Both
+    // produce a sensible-looking band/blob.
+    if (this.overlay !== "none") {
       this.renderOverlay(xScale, yScale, innerW, innerH);
     }
 
@@ -592,6 +593,34 @@ export class HRDiagram {
     }
   }
 
+  // Project (T_eff [K], L_solar) → pixel coordinates via the current
+  // axis modes. Lets us draw region overlays defined in physical
+  // units regardless of which axes the user has selected.
+  private toPixelX(
+    T: number,
+    xScale: d3.ScaleContinuousNumeric<number, number>,
+  ): number {
+    if (this.axes.xMode === "temperature") return xScale(T);
+    // Both bv (colour) and spectralClass use the same 0..1 ordinal
+    // mapping derived from temperature.
+    return xScale(tempToColourPos(T));
+  }
+  private toPixelY(
+    L: number,
+    T: number,
+    yScale: d3.ScaleContinuousNumeric<number, number>,
+  ): number {
+    if (this.axes.yMode === "luminosity") return yScale(L);
+    // Absolute-magnitude axis: convert L → M_V via the bolometric
+    // correction we already use for stars. M_bol = M☉_bol − 2.5 log L,
+    // and M_V = M_bol − BC(T). The bolometric correction varies with
+    // temperature, so we evaluate it at the local T of each control
+    // point — that's why every region's points carry T.
+    const mBol = M_BOL_SUN - 2.5 * Math.log10(L);
+    const mV = mBol - bolometricCorrection(T);
+    return yScale(mV);
+  }
+
   private drawBand(
     g: d3.Selection<SVGGElement, unknown, null, undefined>,
     r: BandRegion,
@@ -601,14 +630,15 @@ export class HRDiagram {
     innerH: number,
   ): void {
     // Smooth area through the (T, L_top, L_bottom) control points using
-    // Catmull-Rom interpolation. This gives the characteristic S-shape
-    // of the main sequence — gentle through F/G/K, steeper at the
-    // extremes — without any visible polygon facets.
+    // Catmull-Rom interpolation. Each control point is projected
+    // through the current axis modes, so the band naturally re-shapes
+    // when the user switches to colour / spectral class on X or
+    // absolute magnitude on Y.
     const area = d3
       .area<readonly [number, number, number]>()
-      .x((d) => xScale(d[0]))
-      .y0((d) => yScale(d[2]))
-      .y1((d) => yScale(d[1]))
+      .x((d) => this.toPixelX(d[0], xScale))
+      .y0((d) => this.toPixelY(d[2], d[0], yScale))
+      .y1((d) => this.toPixelY(d[1], d[0], yScale))
       .curve(d3.curveCatmullRom.alpha(0.5));
     const pathD = area(r.centerline as Array<[number, number, number]>) ?? "";
     g.append("path")
@@ -617,12 +647,10 @@ export class HRDiagram {
       .attr("fill-opacity", 0.22)
       .attr("filter", `url(#${this.clipId}-band-blur)`);
 
-    // Label along the band, rotated to follow the band's slope and
-    // sized larger than the blob labels — the main sequence is the
-    // headline result of the H-R diagram, so it deserves emphasis.
+    // Label along the band.
     const [lT, lL] = r.labelAt;
-    const lx = clampN(xScale(lT), 12, innerW - 12);
-    const ly = clampN(yScale(lL), 14, innerH - 6);
+    const lx = clampN(this.toPixelX(lT, xScale), 12, innerW - 12);
+    const ly = clampN(this.toPixelY(lL, lT, yScale), 14, innerH - 6);
     const t = g
       .append("text")
       .attr("x", lx)
@@ -650,17 +678,22 @@ export class HRDiagram {
     innerW: number,
     innerH: number,
   ): void {
-    // Convert the dex half-widths into pixel half-widths via the scale.
-    // The scale is log, so log10(T_center) ± rDexT translates to two T
-    // values whose pixel positions give us the ellipse's pixel size.
-    const cx = xScale(r.centerT);
-    const cy = yScale(r.centerL);
+    // Convert the dex half-widths into pixel half-widths via the
+    // current axes. Each axis-edge T / L value is projected through
+    // toPixelX / toPixelY so the ellipse remains in the right place
+    // even when the axes are non-linear (colour / spectral class) or
+    // re-mapped (absolute magnitude).
+    const cx = this.toPixelX(r.centerT, xScale);
+    const cy = this.toPixelY(r.centerL, r.centerT, yScale);
     const t1 = Math.pow(10, Math.log10(r.centerT) + r.rDexT);
     const t2 = Math.pow(10, Math.log10(r.centerT) - r.rDexT);
     const l1 = Math.pow(10, Math.log10(r.centerL) + r.rDexL);
     const l2 = Math.pow(10, Math.log10(r.centerL) - r.rDexL);
-    const rx = Math.abs(xScale(t1) - xScale(t2)) / 2;
-    const ry = Math.abs(yScale(l1) - yScale(l2)) / 2;
+    const rx = Math.abs(this.toPixelX(t1, xScale) - this.toPixelX(t2, xScale)) / 2;
+    const ry =
+      Math.abs(
+        this.toPixelY(l1, r.centerT, yScale) - this.toPixelY(l2, r.centerT, yScale),
+      ) / 2;
 
     const id = `${this.clipId}-blob-${slug(r.name)}`;
     const ell = g
