@@ -234,22 +234,27 @@ function buildSchematic(): HTMLElement {
   const y = (L: number) =>
     padT + ((logLHi - Math.log10(L)) / (logLHi - logLLo)) * innerH;
 
-  // Build the smooth main-sequence band as an SVG path through control
-  // points. Use an S-shape: T_centers from hot to cool, with upper /
-  // lower L edges that narrow gently in the middle.
+  // 16 control points sampled from a smooth main-sequence relation,
+  // matching the production overlay. Slope d log L / d log T stays in
+  // a narrow ~7-8 range so the Catmull-Rom curve through them has no
+  // visible wobble. Band half-width: ±0.4 dex.
   const ms: ReadonlyArray<readonly [number, number, number]> = [
-    [40000, 6e5, 5e4],
-    [25000, 5e4, 5e3],
-    [15000, 4e3, 300],
-    [10000, 200, 30],
-    [8000, 30, 6],
-    [6500, 5, 1.3],
-    [5800, 1.7, 0.6],
-    [5000, 0.6, 0.18],
-    [4000, 0.15, 0.04],
-    [3500, 0.04, 0.008],
-    [3000, 0.008, 0.0012],
-    [2400, 0.001, 0.00015],
+    [40000, 8.0e5, 1.3e5],
+    [30000, 1.3e5, 2.0e4],
+    [20000, 1.0e4, 1500],
+    [15000, 2500, 400],
+    [12000, 630, 100],
+    [10000, 160, 25],
+    [8500, 40, 6.3],
+    [7000, 9.0, 1.4],
+    [6000, 2.5, 0.40],
+    [5500, 1.0, 0.16],
+    [5000, 0.50, 0.08],
+    [4500, 0.25, 0.040],
+    [4000, 0.10, 0.016],
+    [3500, 0.040, 0.0063],
+    [3000, 0.010, 0.0016],
+    [2400, 0.0020, 0.00032],
   ];
   const topPts = ms.map(([T, hi]) => [x(T), y(hi)] as [number, number]);
   const botPts = ms.map(([T, , lo]) => [x(T), y(lo)] as [number, number]);

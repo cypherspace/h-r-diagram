@@ -405,22 +405,30 @@ export class HRDiagram {
   // ---- region overlay ----
 
   // The main sequence centerline runs S-shaped through (T, L) — steep
-  // at the hot end (O/B), gentle through F/G/K (the famous "kink"
-  // around the Sun), then steeper again into the M dwarfs. Each tuple
-  // is [T_eff (K), upper edge L_solar, lower edge L_solar].
+  // at the hot end (O/B), gentle through F/G/K (the textbook
+  // "flattening" around the Sun), then steeper again into the M
+  // dwarfs. The control points sit roughly on a smooth curve d log L /
+  // d log T ≈ -7 to -8 across most of the band, sampled finely enough
+  // (16 points) that the Catmull-Rom interpolation has no visible
+  // wobble. Band half-width is ±0.4 dex in log L throughout. Each
+  // tuple is [T_eff (K), upper edge L_solar, lower edge L_solar].
   private static readonly MAIN_SEQUENCE: ReadonlyArray<readonly [number, number, number]> = [
-    [40000, 6e5, 5e4],
-    [25000, 5e4, 5e3],
-    [15000, 4e3, 300],
-    [10000, 200, 30],
-    [8000, 30, 6],
-    [6500, 5, 1.3],
-    [5800, 1.7, 0.6],
-    [5000, 0.6, 0.18],
-    [4000, 0.15, 0.04],
-    [3500, 0.04, 0.008],
-    [3000, 0.008, 0.0012],
-    [2400, 0.001, 0.00015],
+    [40000, 8.0e5, 1.3e5],
+    [30000, 1.3e5, 2.0e4],
+    [20000, 1.0e4, 1500],
+    [15000, 2500, 400],
+    [12000, 630, 100],
+    [10000, 160, 25],
+    [8500, 40, 6.3],
+    [7000, 9.0, 1.4],
+    [6000, 2.5, 0.40],
+    [5500, 1.0, 0.16],
+    [5000, 0.50, 0.08],
+    [4500, 0.25, 0.040],
+    [4000, 0.10, 0.016],
+    [3500, 0.040, 0.0063],
+    [3000, 0.010, 0.0016],
+    [2400, 0.0020, 0.00032],
   ];
 
   private static readonly REGIONS_BASIC: ReadonlyArray<RegionDef> = [
@@ -521,7 +529,20 @@ export class HRDiagram {
     // Per-region radial gradients give the soft fade-out at the edges
     // of each blob, so the overlay reads like a real H-R diagram
     // (Wikipedia / Britannica style) rather than a polygon outline.
+    // Plus a small Gaussian blur applied to the main-sequence band so
+    // its edges feather into the chart background — closer to how the
+    // band actually looks in published diagrams where stars scatter
+    // either side of the centerline.
     const defs = g.append("defs");
+    defs
+      .append("filter")
+      .attr("id", `${this.clipId}-band-blur`)
+      .attr("x", "-2%")
+      .attr("y", "-2%")
+      .attr("width", "104%")
+      .attr("height", "104%")
+      .append("feGaussianBlur")
+      .attr("stdDeviation", "1.6");
     for (const r of regions) {
       if (r.type !== "blob") continue;
       const id = `${this.clipId}-blob-${slug(r.name)}`;
@@ -565,9 +586,7 @@ export class HRDiagram {
       .attr("d", pathD)
       .attr("fill", r.color)
       .attr("fill-opacity", 0.22)
-      .attr("stroke", r.color)
-      .attr("stroke-opacity", 0.4)
-      .attr("stroke-width", 0.6);
+      .attr("filter", `url(#${this.clipId}-band-blur)`);
 
     // Label along the band, lightly rotated to follow the curve.
     const [lT, lL] = r.labelAt;
