@@ -239,24 +239,24 @@ function buildSchematic(): HTMLElement {
   // 16 control points sampled from a smooth main-sequence relation,
   // matching the production overlay. Slope d log L / d log T stays in
   // a narrow ~7-8 range so the Catmull-Rom curve through them has no
-  // visible wobble. Band half-width: ±0.4 dex.
+  // visible wobble. Band half-width: ±0.6 dex.
   const ms: ReadonlyArray<readonly [number, number, number]> = [
-    [40000, 8.0e5, 1.3e5],
-    [30000, 1.3e5, 2.0e4],
-    [20000, 1.0e4, 1500],
-    [15000, 2500, 400],
-    [12000, 630, 100],
-    [10000, 160, 25],
-    [8500, 40, 6.3],
-    [7000, 9.0, 1.4],
-    [6000, 2.5, 0.40],
-    [5500, 1.0, 0.16],
-    [5000, 0.50, 0.08],
-    [4500, 0.25, 0.040],
-    [4000, 0.10, 0.016],
-    [3500, 0.040, 0.0063],
-    [3000, 0.010, 0.0016],
-    [2400, 0.0020, 0.00032],
+    [40000, 1.3e6, 8.0e4],
+    [30000, 2.0e5, 1.3e4],
+    [20000, 1.5e4, 1.0e3],
+    [15000, 4.0e3, 2.5e2],
+    [12000, 1.0e3, 63],
+    [10000, 250, 16],
+    [8500, 63, 4.0],
+    [7000, 14, 0.90],
+    [6000, 4.0, 0.25],
+    [5500, 1.6, 0.10],
+    [5000, 0.80, 0.050],
+    [4500, 0.40, 0.025],
+    [4000, 0.16, 0.010],
+    [3500, 0.063, 0.0040],
+    [3000, 0.016, 0.0010],
+    [2400, 0.0030, 0.00020],
   ];
   // Use d3.area with the same Catmull-Rom centripetal interpolation as
   // the chart overlay, so the schematic and the live diagram show
