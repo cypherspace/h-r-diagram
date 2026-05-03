@@ -41,9 +41,14 @@ const SUBSECTIONS: Subsection[] = [
       <p>"Apparent brightness" is just how bright the star looks from
       Earth. We measure it on the <strong>magnitude scale</strong>, a
       system Hipparchus invented over 2000 years ago. He categorised
-      the brightest stars he could see as 1, and the dimmest stars he
-      could see as a 6. That scale is still the basis for how we talk
-      about the brightness of stars.</p>
+      the brightest stars he could see as "of the first magnitude",
+      meaning the biggest, and carried on up to the "sixth magnitude"
+      for the dimmest stars. Although it was made mathematical in the
+      19th century, that scale is still the basis for how we talk
+      about the brightness of stars. A star with an apparent magnitude
+      of 1 is one of the brightest in the night sky, and if it has an
+      apparent magnitude of more than 6, it's not visible to the
+      human eye without help.</p>
       <p>Two quirks worth knowing:</p>
       <ol>
         <li><strong>Lower numbers mean brighter stars.</strong> Sirius
@@ -119,8 +124,15 @@ const SUBSECTIONS: Subsection[] = [
     bodyHtml: `
       <p><strong>Luminosity</strong> is a star's total power output —
       energy radiated per second, in watts, summed over every
-      wavelength. The Sun's luminosity is 3.83 × 10²⁶ W; we usually
-      express other stars as multiples of the Sun's value.</p>
+      wavelength. The Sun's luminosity is 3.83 × 10²⁶ watts. Because
+      this is such a large value, and all stars have such large values
+      of energy output, we usually express other stars as multiples of
+      the Sun's value, L<sub>☉</sub>, instead. For example,
+      0.5 L<sub>☉</sub> or 1,234 L<sub>☉</sub> means the star emits
+      half as much energy as the Sun, or 1,234 times as much energy
+      as the Sun. What we call "brightness", then, is really
+      luminosity. Brighter stars are brighter because they emit more
+      energy.</p>
       <p>We can find the luminosity in two ways.</p>
       <p><strong>First, we can use the Stefan-Boltzmann law, which
       describes how much energy a hot object radiates.</strong> A

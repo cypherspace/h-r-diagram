@@ -695,8 +695,9 @@ export class HRDiagram {
 
   private xValueFn(): (d: PlottedStar) => number {
     if (this.axes.xMode === "temperature") return (d) => d.teff;
-    // Colour mode: ordinal position derived from the star's temperature
-    // across the 7 OBAFGKM bands; gives evenly-spaced colour labels.
+    // Both colour and spectral-class modes use the same ordinal
+    // position (0 at hot O end, 1 at cool M end), since both are
+    // determined by temperature — they just differ in tick labels.
     return (d) => tempToColourPos(d.teff);
   }
 
@@ -741,13 +742,17 @@ export class HRDiagram {
 
   private makeXAxis(scale: d3.ScaleContinuousNumeric<number, number>) {
     const axis = d3.axisBottom(scale);
-    if (this.axes.xMode === "bv") {
-      // Tick at the centre of each colour band, labelled by name.
+    if (this.axes.xMode === "bv" || this.axes.xMode === "spectralClass") {
+      // Categorical axis. Same tick positions for both modes (one at
+      // the centre of each OBAFGKM band) — only the labels differ.
       const N = COLOUR_BANDS.length;
       const tickValues = COLOUR_BANDS.map((_b, i) => (i + 0.5) / N);
-      axis
-        .tickValues(tickValues)
-        .tickFormat((_v, i) => COLOUR_BANDS[i]?.label ?? "");
+      axis.tickValues(tickValues);
+      if (this.axes.xMode === "spectralClass") {
+        axis.tickFormat((_v, i) => COLOUR_BANDS[i]?.spectralLetter ?? "");
+      } else {
+        axis.tickFormat((_v, i) => COLOUR_BANDS[i]?.label ?? "");
+      }
       return axis;
     }
     if (this.axes.xMode === "temperature" && this.axes.xScale === "log") {
@@ -772,8 +777,9 @@ export class HRDiagram {
 
   private xLabel(): string {
     if (this.axes.xMode === "temperature") {
-      return "Surface temperature (K) — hotter ←";
+      return "← hotter — Surface temperature (K) — cooler →";
     }
+    if (this.axes.xMode === "spectralClass") return "Spectral class";
     return "Colour";
   }
 
@@ -786,9 +792,6 @@ export class HRDiagram {
     return "Absolute magnitude — brighter ↑";
   }
 }
-
-// L_☉ = 3.828 × 10²⁶ W (IAU 2015 nominal solar luminosity).
-const L_SUN_W = 3.828e26;
 
 const SUPERSCRIPTS: Record<string, string> = {
   "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
@@ -817,33 +820,36 @@ export function formatLuminosityTick(
   unit: "solar" | "watts",
 ): string {
   if (!Number.isFinite(solarValue) || solarValue <= 0) return "";
-  const value = unit === "watts" ? solarValue * L_SUN_W : solarValue;
-  // Skip non-decade ticks (within ~5%) when in powers/fractions mode so
-  // we don't get clutter — d3 sometimes adds intermediate ticks like 2,
-  // 5 which look messy with these label styles.
-  const log = Math.log10(value);
-  const isDecade = Math.abs(log - Math.round(log)) < 0.02;
+  // Decade detection works on the SOLAR value — ticks are positioned
+  // by d3 at solar decades (1, 10, 100, …) regardless of unit, and
+  // for watts mode we want to label exactly those positions with their
+  // watts equivalent. Watts decades (10²⁵, 10²⁶, …) wouldn't line up
+  // because L☉ ≈ 3.83 × 10²⁶ W is not itself a decade.
+  const logSolar = Math.log10(solarValue);
+  const isDecade = Math.abs(logSolar - Math.round(logSolar)) < 0.02;
 
+  if (unit === "watts") {
+    // Always show watts in scientific notation: each decade of solar
+    // luminosity = a decade of watts, with the same 3.83 prefix.
+    if (!isDecade) return "";
+    const e = Math.round(logSolar);
+    return `3.83 × 10${toSuperscript(e + 26)} W`;
+  }
+
+  // Solar units below this point.
   if (format === "powers") {
     if (!isDecade) return "";
-    const e = Math.round(log);
-    return `10${toSuperscript(e)}${unit === "watts" ? " W" : ""}`;
+    const e = Math.round(logSolar);
+    return `10${toSuperscript(e)}`;
   }
-  if (format === "fractions" && unit === "solar") {
+  if (format === "fractions") {
     if (!isDecade) return "";
-    const e = Math.round(log);
+    const e = Math.round(logSolar);
     if (e === 0) return "1";
     if (e > 0) return `${10 ** e}`;
     return `1/${10 ** -e}`;
   }
-  // Decimals (default), and the watts fallback when fractions is picked.
-  if (unit === "watts") {
-    // Always scientific for watts since values are huge.
-    if (!isDecade) return "";
-    const e = Math.round(log);
-    return `10${toSuperscript(e)} W`;
-  }
-  return trimSig(value);
+  return trimSig(solarValue);
 }
 
 // Build a new ZoomTransform that scales `transform` around horizontal

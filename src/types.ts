@@ -38,7 +38,7 @@ export interface PlottedStar extends Star {
 }
 
 export type YAxisMode = "luminosity" | "absoluteMagnitude";
-export type XAxisMode = "temperature" | "bv";
+export type XAxisMode = "temperature" | "bv" | "spectralClass";
 export type ScaleMode = "log" | "linear";
 // Brightness-axis tick label style. Only meaningful in luminosity mode.
 export type LumLabelFormat = "decimals" | "fractions" | "powers";
