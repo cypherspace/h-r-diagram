@@ -409,7 +409,7 @@ function blackbodyCurvesSvg(): string {
     ${xTicks}
     <text x="${padL + innerW / 2}" y="${H - 6}" fill="#9aa6c2" font-size="10" text-anchor="middle">wavelength (nm)</text>
     <text x="14" y="${padT + innerH / 2}" fill="#9aa6c2" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${padT + innerH / 2})">spectral intensity →</text>
-  </svg><figcaption>Five blackbodies at 3000 K (red) up to 7000 K (blue). As temperature rises, the peak (filled dot on each curve) shifts to shorter wavelengths and the curve gets dramatically taller — both consequences of Wien's law and the Stefan-Boltzmann law. The dashed red line traces the peak through every temperature: λ<sub>max</sub> × T = constant.</figcaption></figure>`;
+  </svg><figcaption>The diagram shows the emission of light from five hot objects at 3000 K (red) up to 7000 K (blue), with the <em>amount</em> of light emitted on the left, and the wavelength along the bottom. As temperature rises, the peak shifts to shorter wavelengths. The curve getting taller shows that more energy is radiated as well — but it's the peak that tells us the temperature.</figcaption></figure>`;
 }
 
 function realSpectrumSvg(): string {
@@ -429,9 +429,9 @@ function realSpectrumSvg(): string {
     [200, 0.027], [220, 0.046], [240, 0.043], [260, 0.084],
     [280, 0.213], [300, 0.558], [320, 0.786], [340, 1.00],
     [360, 1.06], [380, 1.13], [395, 1.29], [400, 1.51],
-    [420, 1.68], [440, 1.77], [450, 2.04], [460, 1.99],
-    [470, 2.04], [480, 2.07], [490, 1.97], [500, 1.96],
-    [510, 1.92], [520, 1.85], [540, 1.86], [560, 1.80],
+    [420, 1.68], [440, 1.82], [450, 1.92], [460, 1.99],
+    [470, 2.02], [480, 2.05], [490, 2.07], [500, 2.08],
+    [510, 2.05], [520, 1.99], [540, 1.92], [560, 1.85],
     [580, 1.82], [600, 1.74], [620, 1.69], [640, 1.65],
     [660, 1.55], [680, 1.46], [700, 1.38], [750, 1.20],
     [800, 1.05], [850, 0.93], [900, 0.78], [950, 0.66],
@@ -489,7 +489,7 @@ function realSpectrumSvg(): string {
     <line x1="${peakX.toFixed(1)}" y1="${peakY.toFixed(1)}" x2="${peakX.toFixed(1)}" y2="${(padT + innerH).toFixed(1)}" stroke="#ffeb3b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.7"/>
     <circle cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="3.5" fill="#ffeb3b" stroke="#0c1326" stroke-width="0.8"/>
     <text x="${(peakX + 8).toFixed(1)}" y="${(peakY - 4).toFixed(1)}" fill="#ffeb3b" font-size="10" font-weight="600">peak ≈ ${peak[0]} nm</text>
-    <text x="${(peakX + 8).toFixed(1)}" y="${(peakY + 9).toFixed(1)}" fill="#ffeb3b" font-size="9">→ T ≈ b/λ ≈ 6 040 K</text>`;
+    <text x="${(peakX + 8).toFixed(1)}" y="${(peakY + 9).toFixed(1)}" fill="#ffeb3b" font-size="9">→ T ≈ b/λ ≈ 5 800 K</text>`;
 
   return `<figure class="hwk-fig"><svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Real solar spectrum (ASTM E-490)">
     <defs>${rainbow}</defs>
@@ -500,8 +500,5 @@ function realSpectrumSvg(): string {
     ${xTicks}
     <text x="${padL + innerW / 2}" y="${H - 6}" fill="#9aa6c2" font-size="10" text-anchor="middle">wavelength (nm)</text>
     <text x="14" y="${padT + innerH / 2}" fill="#9aa6c2" font-size="10" text-anchor="middle" transform="rotate(-90 14 ${padT + innerH / 2})">spectral irradiance (W/m²/nm)</text>
-  </svg><figcaption>Real measured solar spectrum (ASTM E-490, top of atmosphere).
-  The peak sits at about <strong>480 nm</strong>, in blue-green light.
-  Wien's law turns that into a temperature: T ≈ 2.9 × 10⁻³ / 480 × 10⁻⁹ ≈ <strong>6 000 K</strong> — within a few percent of the Sun's well-known surface temperature of 5 778 K.
-  The dips and peaks tell us about the composition of the Sun — but that's a topic for a different day!</figcaption></figure>`;
+  </svg><figcaption>This shows the Sun's real spectrum. You can see that it's the same basic shape. (The other dips and peaks tell us about the composition of the Sun — but that's a topic for a different day.) The peak sits at about <strong>500 nm</strong>, in blue-green light. Wien's law allows us to calculate temperature: T ≈ 2.9 × 10⁻³ / 500 × 10⁻⁹ ≈ <strong>5 800 K</strong>. With more accurate measurements, we can calculate the surface temperature more accurately too.</figcaption></figure>`;
 }
