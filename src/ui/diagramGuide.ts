@@ -309,9 +309,9 @@ function buildSchematic(): HTMLElement {
       <path d="${msPath}" fill="url(#msFill)" stroke="#ffd97a" stroke-opacity="0.45" stroke-width="0.7"/>
       <text x="${x(6500)}" y="${y(2.5)}" text-anchor="middle" fill="#ffd97a" font-size="11" font-style="italic" transform="rotate(-26 ${x(6500)} ${y(2.5)})" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">Main sequence</text>
 
-      <!-- White dwarfs -->
-      <ellipse cx="${x(12000)}" cy="${y(0.005)}" rx="${(x(5000) - x(28000)) / 2}" ry="${(y(0.0005) - y(0.05)) / 2}" fill="url(#schemWD)" transform="rotate(-8 ${x(12000)} ${y(0.005)})"/>
-      <text x="${x(12000)}" y="${y(0.005) + 3}" text-anchor="middle" fill="#e6ecff" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">White dwarfs</text>
+      <!-- White dwarfs (cooling sequence: hot/bright UL → cool/dim LR) -->
+      <ellipse cx="${x(12500)}" cy="${y(0.003)}" rx="${(x(5000) - x(31000)) / 2}" ry="${(y(0.00025) - y(0.04)) / 2}" fill="url(#schemWD)" transform="rotate(22 ${x(12500)} ${y(0.003)})"/>
+      <text x="${x(12500)}" y="${y(0.003) + 3}" text-anchor="middle" fill="#e6ecff" font-size="11" font-weight="600" paint-order="stroke" stroke="#0c1326" stroke-width="2.5" stroke-linejoin="round">White dwarfs</text>
 
       <!-- Sun marker -->
       <circle cx="${x(5800)}" cy="${y(1)}" r="3" fill="#ffd97a"/>

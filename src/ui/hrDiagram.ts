@@ -454,11 +454,18 @@ export class HRDiagram {
       type: "blob",
       name: "White dwarfs",
       color: "#d6e5ff",
-      centerT: 12000,
-      centerL: 0.005,
-      rDexT: 0.45,
-      rDexL: 0.85,
-      rotateDeg: -8,
+      // White dwarfs cool over time at roughly fixed (Earth-sized)
+      // radius, so their luminosity correlates strongly with
+      // temperature: hot WDs are bright, cool WDs are faint. The
+      // resulting cluster runs along a diagonal from upper-left
+      // (~25 000 K, ~0.05 L☉) to lower-right (~6 000 K, ~10⁻⁴ L☉).
+      // Rotating the ellipse +22° lines its long axis up with this
+      // cooling sequence.
+      centerT: 12500,
+      centerL: 0.003,
+      rDexT: 0.40,
+      rDexL: 1.1,
+      rotateDeg: 22,
     },
   ];
   private static readonly REGIONS_ADVANCED: ReadonlyArray<RegionDef> = [
