@@ -49,6 +49,12 @@ interface AladinInstance {
   gotoRaDec: (ra: number, dec: number) => void;
   getRaDec: () => [number, number];
   getFov: () => [number, number];
+  // Pixel ↔ sky coords. (x, y) are in CSS pixels relative to the
+  // Aladin div, with (0, 0) at the top-left. Returns ICRS [ra, dec]
+  // in degrees. We prefer this over getRaDec() for reading the
+  // "current viewport centre" because getRaDec() in v3 can lag pans
+  // and return the previously navigated-to target instead.
+  pix2world?: (x: number, y: number) => [number, number] | null;
   addCatalog: (cat: AladinCatalog) => void;
   addOverlay: (overlay: AladinGraphicOverlay) => void;
   on: (
@@ -358,7 +364,31 @@ export class SkyViewer {
 
   async getCenter(): Promise<[number, number] | null> {
     await this.ready;
-    return this.aladin?.getRaDec() ?? null;
+    if (!this.aladin) return null;
+    // Use pix2world at the centre of the Aladin div — the value most
+    // reliably tracks pan/zoom. Aladin v3's getRaDec() can lag and
+    // return the last navigated-to target (e.g. "Pleiades") rather
+    // than where the user has dragged to, which produced search
+    // results that ended up in completely the wrong region of sky.
+    const div = this.opts.container;
+    const w = div.clientWidth;
+    const h = div.clientHeight;
+    if (w > 0 && h > 0 && typeof this.aladin.pix2world === "function") {
+      try {
+        const xy = this.aladin.pix2world(w / 2, h / 2);
+        if (
+          Array.isArray(xy) &&
+          xy.length >= 2 &&
+          Number.isFinite(xy[0]) &&
+          Number.isFinite(xy[1])
+        ) {
+          return [xy[0] as number, xy[1] as number];
+        }
+      } catch {
+        // fall through to getRaDec
+      }
+    }
+    return this.aladin.getRaDec();
   }
 
   async getFov(): Promise<[number, number] | null> {

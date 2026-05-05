@@ -358,7 +358,7 @@ class App {
     this.inflightGaia?.abort();
     const ctrl = new AbortController();
     this.inflightGaia = ctrl;
-    this.skyStatusEl.textContent = `Searching for stars (radius ${radius.toFixed(2)}°, top ${limit})…`;
+    this.skyStatusEl.textContent = `Searching at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°), radius ${radius.toFixed(2)}°, top ${limit}…`;
     try {
       const rows = await queryConeSearch(ra, dec, radius, {
         topN: limit,
@@ -377,8 +377,8 @@ class App {
       await this.skyViewer.setCandidates(candidates);
       this.skyStatusEl.textContent =
         candidates.length > 0
-          ? `Found ${candidates.length} stars in a ${radius.toFixed(2)}° cone. Click a marker to add one, or "Add all".`
-          : `No new stars in this ${radius.toFixed(2)}° cone.`;
+          ? `Found ${candidates.length} stars in a ${radius.toFixed(2)}° cone at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°). Click a marker, or "Add all".`
+          : `No new stars in a ${radius.toFixed(2)}° cone at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°).`;
     } catch (e) {
       if (ctrl.signal.aborted) return;
       const msg =
