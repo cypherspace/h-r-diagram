@@ -132,6 +132,28 @@ describe("parseParamsupCsv", () => {
   });
 });
 
+describe("buildBoxAdql wraparound", async () => {
+  // Re-import the internal builder to assert on the SQL string.
+  const { _buildBoxAdqlForTests: build } = await import("./gaia");
+
+  it("uses BETWEEN when the RA range doesn't cross 0/360", () => {
+    const sql = build(50, 100, -10, 10, 60, 18);
+    expect(sql).toMatch(/"RA_ICRS" BETWEEN 50 AND 100/);
+    expect(sql).not.toMatch(/OR "RA_ICRS"/);
+  });
+
+  it("uses an OR clause when the RA range crosses 0/360", () => {
+    const sql = build(355, 5, -10, 10, 60, 18);
+    expect(sql).toMatch(/"RA_ICRS" >= 355/);
+    expect(sql).toMatch(/"RA_ICRS" <= 5/);
+  });
+
+  it("does not include ORDER BY (sorting is now client-side)", () => {
+    const sql = build(50, 100, -10, 10, 60, 18);
+    expect(sql).not.toMatch(/ORDER BY/i);
+  });
+});
+
 describe("nearestRow", () => {
   it("returns the row closest to the given coordinates", () => {
     const rows: GaiaRow[] = [

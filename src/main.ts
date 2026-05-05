@@ -4,7 +4,7 @@ import { plotStar } from "./data/derive";
 import {
   GaiaError,
   gaiaRowToStar,
-  queryConeSearch,
+  queryBox,
 } from "./data/gaia";
 import { lookupSimbadName } from "./data/simbad";
 import { HRDiagram } from "./ui/hrDiagram";
@@ -351,13 +351,28 @@ class App {
       return;
     }
     const [ra, dec] = center;
-    const radius = Math.min(Math.max(fov[0], fov[1]) / 2, 1.5);
+    // Use a box (RA/Dec rectangle) rather than a cone. Box queries
+    // avoid VizieR's CONTAINS()-with-CIRCLE slow path, which is what
+    // caused the "fails below 1.5° FOV" reports. The displayed FOV is
+    // a rectangle anyway.
+    //
+    // FOV[0] is the rendered RA span at the centre's declination. To
+    // turn that into a sky-RA range we divide by cos(dec). The box
+    // also gets clamped to a reasonable maximum so a fully zoomed-out
+    // viewport doesn't ask for the whole sky.
+    const cosD = Math.max(0.05, Math.cos((dec * Math.PI) / 180));
+    const halfRa = Math.min(3.0, fov[0] / 2 / cosD);
+    const halfDec = Math.min(3.0, fov[1] / 2);
+    const raMin = ra - halfRa;
+    const raMax = ra + halfRa;
+    const decMin = Math.max(-90, dec - halfDec);
+    const decMax = Math.min(90, dec + halfDec);
     this.inflightGaia?.abort();
     const ctrl = new AbortController();
     this.inflightGaia = ctrl;
-    this.skyStatusEl.textContent = `Searching for stars (radius ${radius.toFixed(2)}°, top ${limit})…`;
+    this.skyStatusEl.textContent = `Searching for stars (top ${limit})…`;
     try {
-      const rows = await queryConeSearch(ra, dec, radius, {
+      const rows = await queryBox(raMin, raMax, decMin, decMax, {
         topN: limit,
         signal: ctrl.signal,
       });
