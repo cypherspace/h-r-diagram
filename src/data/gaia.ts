@@ -207,7 +207,7 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
   // (a server-side parser hiccup, not a real syntax error), etc. Retry
   // up to 3 times with backoff; on final failure, surface a friendly
   // message rather than the raw VOTable error XML.
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 4;
   let lastErr: GaiaError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -216,8 +216,10 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
       if (signal?.aborted) throw e;
       if (e instanceof GaiaError && e.transient && attempt < MAX_ATTEMPTS) {
         lastErr = e;
-        // Exponential backoff: 1.0 s, 2.5 s.
-        await sleep(1000 + 1500 * (attempt - 1), signal);
+        // Backoff: 0.8 s, 2.0 s, 4.0 s. Catches a wider window of the
+        // VizieR parser's intermittent CONTAINS() glitch without making
+        // the success case noticeably slower.
+        await sleep(800 * Math.pow(2.5, attempt - 1), signal);
         continue;
       }
       throw e;
