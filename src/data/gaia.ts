@@ -44,12 +44,11 @@ export class GaiaError extends Error {
 // second, focused query against paramsup using the source IDs from
 // the cone search; see fetchParamsup() below.
 //
-// We also DON'T `ORDER BY Gmag ASC` server-side. ORDER BY forces
-// VizieR to materialise every matching row before applying TOP N,
-// which under load is the slow path that produces the small-cone /
-// large-N failures users see. Instead we fetch a few times the user's
-// limit (no order) and sort by Gmag client-side — bytes are cheap,
-// VizieR's sort is not.
+// We DO `ORDER BY Gmag ASC` server-side. Without it, VizieR returns
+// rows in HEALPix-tile / scan order, which spatially clumps the
+// result (TOP N from one corner of the cone). With it, the result is
+// the N brightest, which are scattered uniformly enough across the
+// cone that the client-side spread-selection has stars to work with.
 function buildConeAdql(
   raDeg: number,
   decDeg: number,
@@ -71,7 +70,8 @@ WHERE 1 = CONTAINS(
   AND "e_Plx" > 0
   AND ("Plx" / "e_Plx") > 5
   AND "Gmag" IS NOT NULL
-  AND "Gmag" < ${magLimit}`;
+  AND "Gmag" < ${magLimit}
+ORDER BY "Gmag" ASC`;
 }
 
 // Box (RA/Dec rectangle) query. Avoids `CONTAINS()` entirely so it
