@@ -43,6 +43,12 @@ export class GaiaError extends Error {
 // parser even though they should be unambiguous. Instead we run a
 // second, focused query against paramsup using the source IDs from
 // the cone search; see fetchParamsup() below.
+//
+// We DO `ORDER BY Gmag ASC` server-side. Without it, VizieR returns
+// rows in HEALPix-tile / scan order, which spatially clumps the
+// result (TOP N from one corner of the cone). With it, the result is
+// the N brightest, which are scattered uniformly enough across the
+// cone that the client-side spread-selection has stars to work with.
 function buildConeAdql(
   raDeg: number,
   decDeg: number,
@@ -68,6 +74,11 @@ WHERE 1 = CONTAINS(
 ORDER BY "Gmag" ASC`;
 }
 
+// Box (RA/Dec rectangle) query. Avoids `CONTAINS()` entirely so it
+// sidesteps the "unresolved identifier" parser glitch and the slow
+// query plan that hits us on small cones. Handles RA wrap-around at
+// the 0/360 boundary by emitting an OR clause when the requested
+// range straddles it.
 function buildBoxAdql(
   raMin: number,
   raMax: number,
@@ -76,11 +87,18 @@ function buildBoxAdql(
   topN: number,
   magLimit: number,
 ): string {
+  const normMin = ((raMin % 360) + 360) % 360;
+  const normMax = ((raMax % 360) + 360) % 360;
+  // Crossing 0°: e.g. raMin=355, raMax=5 should match RA in [355,360]∪[0,5].
+  const wrapsZero = normMin > normMax;
+  const raClause = wrapsZero
+    ? `("RA_ICRS" >= ${normMin} OR "RA_ICRS" <= ${normMax})`
+    : `"RA_ICRS" BETWEEN ${normMin} AND ${normMax}`;
   return `SELECT TOP ${topN}
   "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx", "Gmag",
   ("BPmag" - "RPmag") AS bprp
 FROM "I/355/gaiadr3"
-WHERE "RA_ICRS" BETWEEN ${raMin} AND ${raMax}
+WHERE ${raClause}
   AND "DE_ICRS" BETWEEN ${decMin} AND ${decMax}
   AND "Plx" IS NOT NULL
   AND "Plx" > 0
@@ -88,8 +106,7 @@ WHERE "RA_ICRS" BETWEEN ${raMin} AND ${raMax}
   AND "e_Plx" > 0
   AND ("Plx" / "e_Plx") > 5
   AND "Gmag" IS NOT NULL
-  AND "Gmag" < ${magLimit}
-ORDER BY "Gmag" ASC`;
+  AND "Gmag" < ${magLimit}`;
 }
 
 function buildParamsupAdql(sourceIds: string[]): string {
@@ -102,22 +119,90 @@ FROM "I/355/paramsup"
 WHERE "Source" IN (${list})`;
 }
 
+// Fetch SERVER_OVERSAMPLE × the user's limit so client-side selection
+// has more candidates to choose from. Capped at SERVER_TOP_CAP to keep
+// the payload bounded.
+const SERVER_OVERSAMPLE = 3;
+const SERVER_TOP_CAP = 600;
+
+function pickServerTop(userTop: number): number {
+  return Math.min(SERVER_TOP_CAP, Math.max(userTop, userTop * SERVER_OVERSAMPLE));
+}
+
+export interface ConeSearchOptions {
+  topN?: number;
+  magLimit?: number;
+  signal?: AbortSignal;
+  /**
+   * How to subselect when the cone returns more rows than the user's
+   * limit.
+   * - "brightest" (default): return the topN brightest. Simple, but a
+   *   heavy cluster off-axis (the Pleiades, say) ends up dominating
+   *   the result and pulling every marker far from the crosshair.
+   * - "spread": always include the few stars closest to the centre,
+   *   then fill the rest with the brightest remaining. Gives a
+   *   visually distributed result that always returns whatever is
+   *   under the crosshair.
+   */
+  selection?: "brightest" | "spread";
+}
+
 export async function queryConeSearch(
   raDeg: number,
   decDeg: number,
   radiusDeg: number,
-  options: { topN?: number; magLimit?: number; signal?: AbortSignal } = {},
+  options: ConeSearchOptions = {},
 ): Promise<GaiaRow[]> {
+  const userTop = options.topN ?? 20;
   const adql = buildConeAdql(
     raDeg,
     decDeg,
     radiusDeg,
-    options.topN ?? 50,
+    pickServerTop(userTop),
     options.magLimit ?? 18,
   );
   const rows = await runAdql(adql, options.signal);
-  await enrichWithParamsup(rows, options.signal);
-  return rows;
+  const selected =
+    options.selection === "spread"
+      ? selectSpread(rows, raDeg, decDeg, userTop)
+      : selectBrightest(rows, userTop);
+  await enrichWithParamsup(selected, options.signal);
+  return selected;
+}
+
+function selectBrightest(rows: GaiaRow[], limit: number): GaiaRow[] {
+  return [...rows].sort((a, b) => a.g_mag - b.g_mag).slice(0, limit);
+}
+
+/**
+ * Mixed-criterion subselection: roughly 1/5 of the picks are the stars
+ * closest to the cone centre (so the crosshair always returns
+ * something), the rest are the brightest of the remainder. The result
+ * is sorted by Gmag for display.
+ */
+export function selectSpread(
+  rows: GaiaRow[],
+  centreRa: number,
+  centreDec: number,
+  limit: number,
+): GaiaRow[] {
+  if (rows.length <= limit) return [...rows].sort((a, b) => a.g_mag - b.g_mag);
+  const nNear = Math.max(1, Math.floor(limit / 5));
+  const nBright = limit - nNear;
+  const cosD = Math.cos((centreDec * Math.PI) / 180);
+  const sep2 = (r: GaiaRow): number => {
+    const dRa = (r.ra - centreRa) * cosD;
+    const dDec = r.dec - centreDec;
+    return dRa * dRa + dDec * dDec;
+  };
+  const byDist = [...rows].sort((a, b) => sep2(a) - sep2(b));
+  const nearPicks = byDist.slice(0, nNear);
+  const nearIds = new Set(nearPicks.map((r) => r.source_id));
+  const brightPicks = rows
+    .filter((r) => !nearIds.has(r.source_id))
+    .sort((a, b) => a.g_mag - b.g_mag)
+    .slice(0, nBright);
+  return [...nearPicks, ...brightPicks].sort((a, b) => a.g_mag - b.g_mag);
 }
 
 export async function queryBox(
@@ -127,17 +212,20 @@ export async function queryBox(
   decMax: number,
   options: { topN?: number; magLimit?: number; signal?: AbortSignal } = {},
 ): Promise<GaiaRow[]> {
+  const userTop = options.topN ?? 20;
   const adql = buildBoxAdql(
     raMin,
     raMax,
     decMin,
     decMax,
-    options.topN ?? 200,
+    pickServerTop(userTop),
     options.magLimit ?? 18,
   );
   const rows = await runAdql(adql, options.signal);
-  await enrichWithParamsup(rows, options.signal);
-  return rows;
+  rows.sort((a, b) => a.g_mag - b.g_mag);
+  const trimmed = rows.slice(0, userTop);
+  await enrichWithParamsup(trimmed, options.signal);
+  return trimmed;
 }
 
 // Mutates `rows` to fill in teff_k and lum_flame_solar from paramsup
@@ -174,7 +262,7 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
   // (a server-side parser hiccup, not a real syntax error), etc. Retry
   // up to 3 times with backoff; on final failure, surface a friendly
   // message rather than the raw VOTable error XML.
-  const MAX_ATTEMPTS = 3;
+  const MAX_ATTEMPTS = 4;
   let lastErr: GaiaError | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -183,8 +271,10 @@ async function runAdql(adql: string, signal?: AbortSignal): Promise<GaiaRow[]> {
       if (signal?.aborted) throw e;
       if (e instanceof GaiaError && e.transient && attempt < MAX_ATTEMPTS) {
         lastErr = e;
-        // Exponential backoff: 1.0 s, 2.5 s.
-        await sleep(1000 + 1500 * (attempt - 1), signal);
+        // Backoff: 0.8 s, 2.0 s, 4.0 s. Catches a wider window of the
+        // VizieR parser's intermittent CONTAINS() glitch without making
+        // the success case noticeably slower.
+        await sleep(800 * Math.pow(2.5, attempt - 1), signal);
         continue;
       }
       throw e;
@@ -337,6 +427,19 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // production but lets tests pass synthetic CSV without a network call.
 export function _parseCsvForTests(text: string): GaiaRow[] {
   return parseCsv(text);
+}
+
+// Exposed for tests — lets us assert on the generated ADQL without
+// hitting VizieR. Same signature as the internal builder.
+export function _buildBoxAdqlForTests(
+  raMin: number,
+  raMax: number,
+  decMin: number,
+  decMax: number,
+  topN: number,
+  magLimit: number,
+): string {
+  return buildBoxAdql(raMin, raMax, decMin, decMax, topN, magLimit);
 }
 
 // VizieR returns CSV with a header row followed by data rows.

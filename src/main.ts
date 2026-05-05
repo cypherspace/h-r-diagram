@@ -351,14 +351,21 @@ class App {
       return;
     }
     const [ra, dec] = center;
+    // Cone search around the view centre. The radius covers the
+    // diagonal of the visible viewport, capped so we don't ask for the
+    // whole sky on a fully zoomed-out view.
     const radius = Math.min(Math.max(fov[0], fov[1]) / 2, 1.5);
     this.inflightGaia?.abort();
     const ctrl = new AbortController();
     this.inflightGaia = ctrl;
-    this.skyStatusEl.textContent = `Searching for stars (radius ${radius.toFixed(2)}°, top ${limit})…`;
+    this.skyStatusEl.textContent = `Searching at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°), radius ${radius.toFixed(2)}°, top ${limit}…`;
     try {
       const rows = await queryConeSearch(ra, dec, radius, {
         topN: limit,
+        // Mix of "near the crosshair" + brightest, so a heavy off-axis
+        // cluster (e.g. the Pleiades sitting at the edge of the cone)
+        // can't pull every marker into one corner.
+        selection: "spread",
         signal: ctrl.signal,
       });
       if (ctrl.signal.aborted) return;
@@ -370,8 +377,8 @@ class App {
       await this.skyViewer.setCandidates(candidates);
       this.skyStatusEl.textContent =
         candidates.length > 0
-          ? `Found ${candidates.length} stars with data. Click a marker to add one, or "Add all".`
-          : "No new stars in that region.";
+          ? `Found ${candidates.length} stars in a ${radius.toFixed(2)}° cone at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°). Click a marker, or "Add all".`
+          : `No new stars in a ${radius.toFixed(2)}° cone at (${ra.toFixed(2)}°, ${dec.toFixed(2)}°).`;
     } catch (e) {
       if (ctrl.signal.aborted) return;
       const msg =
