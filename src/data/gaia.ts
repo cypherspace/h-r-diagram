@@ -119,9 +119,9 @@ FROM "I/355/paramsup"
 WHERE "Source" IN (${list})`;
 }
 
-// Fetch SERVER_OVERSAMPLE × the user's limit so client-side sorting
-// can return the brightest N. Capped at SERVER_TOP_CAP to keep the
-// payload bounded.
+// Fetch SERVER_OVERSAMPLE × the user's limit so client-side selection
+// has more candidates to choose from. Capped at SERVER_TOP_CAP to keep
+// the payload bounded.
 const SERVER_OVERSAMPLE = 3;
 const SERVER_TOP_CAP = 600;
 
@@ -129,11 +129,29 @@ function pickServerTop(userTop: number): number {
   return Math.min(SERVER_TOP_CAP, Math.max(userTop, userTop * SERVER_OVERSAMPLE));
 }
 
+export interface ConeSearchOptions {
+  topN?: number;
+  magLimit?: number;
+  signal?: AbortSignal;
+  /**
+   * How to subselect when the cone returns more rows than the user's
+   * limit.
+   * - "brightest" (default): return the topN brightest. Simple, but a
+   *   heavy cluster off-axis (the Pleiades, say) ends up dominating
+   *   the result and pulling every marker far from the crosshair.
+   * - "spread": always include the few stars closest to the centre,
+   *   then fill the rest with the brightest remaining. Gives a
+   *   visually distributed result that always returns whatever is
+   *   under the crosshair.
+   */
+  selection?: "brightest" | "spread";
+}
+
 export async function queryConeSearch(
   raDeg: number,
   decDeg: number,
   radiusDeg: number,
-  options: { topN?: number; magLimit?: number; signal?: AbortSignal } = {},
+  options: ConeSearchOptions = {},
 ): Promise<GaiaRow[]> {
   const userTop = options.topN ?? 20;
   const adql = buildConeAdql(
@@ -144,10 +162,47 @@ export async function queryConeSearch(
     options.magLimit ?? 18,
   );
   const rows = await runAdql(adql, options.signal);
-  rows.sort((a, b) => a.g_mag - b.g_mag);
-  const trimmed = rows.slice(0, userTop);
-  await enrichWithParamsup(trimmed, options.signal);
-  return trimmed;
+  const selected =
+    options.selection === "spread"
+      ? selectSpread(rows, raDeg, decDeg, userTop)
+      : selectBrightest(rows, userTop);
+  await enrichWithParamsup(selected, options.signal);
+  return selected;
+}
+
+function selectBrightest(rows: GaiaRow[], limit: number): GaiaRow[] {
+  return [...rows].sort((a, b) => a.g_mag - b.g_mag).slice(0, limit);
+}
+
+/**
+ * Mixed-criterion subselection: roughly 1/5 of the picks are the stars
+ * closest to the cone centre (so the crosshair always returns
+ * something), the rest are the brightest of the remainder. The result
+ * is sorted by Gmag for display.
+ */
+export function selectSpread(
+  rows: GaiaRow[],
+  centreRa: number,
+  centreDec: number,
+  limit: number,
+): GaiaRow[] {
+  if (rows.length <= limit) return [...rows].sort((a, b) => a.g_mag - b.g_mag);
+  const nNear = Math.max(1, Math.floor(limit / 5));
+  const nBright = limit - nNear;
+  const cosD = Math.cos((centreDec * Math.PI) / 180);
+  const sep2 = (r: GaiaRow): number => {
+    const dRa = (r.ra - centreRa) * cosD;
+    const dDec = r.dec - centreDec;
+    return dRa * dRa + dDec * dDec;
+  };
+  const byDist = [...rows].sort((a, b) => sep2(a) - sep2(b));
+  const nearPicks = byDist.slice(0, nNear);
+  const nearIds = new Set(nearPicks.map((r) => r.source_id));
+  const brightPicks = rows
+    .filter((r) => !nearIds.has(r.source_id))
+    .sort((a, b) => a.g_mag - b.g_mag)
+    .slice(0, nBright);
+  return [...nearPicks, ...brightPicks].sort((a, b) => a.g_mag - b.g_mag);
 }
 
 export async function queryBox(

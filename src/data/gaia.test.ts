@@ -154,6 +154,56 @@ describe("buildBoxAdql wraparound", async () => {
   });
 });
 
+describe("selectSpread", async () => {
+  const { selectSpread } = await import("./gaia");
+
+  function row(id: string, ra: number, dec: number, gMag: number): GaiaRow {
+    return {
+      source_id: id,
+      ra,
+      dec,
+      parallax_mas: 10,
+      parallax_over_error: 50,
+      g_mag: gMag,
+      bp_rp: 0.5,
+      teff_k: null,
+      lum_flame_solar: null,
+    };
+  }
+
+  it("returns all rows (sorted by Gmag) when count <= limit", () => {
+    const rs = [row("a", 0, 0, 5), row("b", 1, 0, 3), row("c", 0, 1, 7)];
+    const out = selectSpread(rs, 0, 0, 5);
+    expect(out.map((r) => r.source_id)).toEqual(["b", "a", "c"]);
+  });
+
+  it("always includes the row closest to the cone centre", () => {
+    // Bright cluster offset from the centre at (0,0); a single faint
+    // star sits right on the crosshair. Plain "topN brightest" would
+    // never include the faint one. selectSpread must.
+    const cluster = Array.from({ length: 20 }, (_, i) =>
+      row(`bright-${i}`, 0.4 + i * 0.005, 0.4, 4 + i * 0.05),
+    );
+    const onCrosshair = row("centre", 0, 0, 12);
+    const rs = [...cluster, onCrosshair];
+    const out = selectSpread(rs, 0, 0, 10);
+    expect(out.map((r) => r.source_id)).toContain("centre");
+  });
+
+  it("still favours bright stars for the bulk of the picks", () => {
+    // 100 random stars, only 1 close to centre.
+    const stars: GaiaRow[] = [];
+    for (let i = 0; i < 100; i++) {
+      stars.push(row(`s${i}`, (i % 10) - 5, Math.floor(i / 10) - 5, 5 + i / 20));
+    }
+    const out = selectSpread(stars, 0, 0, 10);
+    expect(out.length).toBe(10);
+    // 8 of the 10 should be among the 20 brightest (Gmag <= 6.0).
+    const bright = out.filter((r) => r.g_mag <= 6.0);
+    expect(bright.length).toBeGreaterThanOrEqual(7);
+  });
+});
+
 describe("nearestRow", () => {
   it("returns the row closest to the given coordinates", () => {
     const rows: GaiaRow[] = [
